@@ -1,0 +1,39 @@
+<%= form_with model: [:admin, @contact], class: "card" do |f| %>
+  <% if @contact.errors.any? %>
+    <div class="flash alert" style="margin-bottom: 1rem;">
+      <% @contact.errors.full_messages.each do |msg| %>
+        <div><%= msg %></div>
+      <% end %>
+    </div>
+  <% end %>
+
+  <div class="form-group">
+    <%= f.label :phone %>
+    <%= f.text_field :phone, placeholder: "+39..." %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :name %>
+    <%= f.text_field :name %>
+  </div>
+
+  <div class="form-group form-check">
+    <%= f.check_box :whitelisted %>
+    <%= f.label :whitelisted, "Whitelisted (always ring through)" %>
+  </div>
+
+  <div class="form-group form-check">
+    <%= f.check_box :blacklisted %>
+    <%= f.label :blacklisted, "Blacklisted (always reject)" %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :notes %>
+    <%= f.text_area :notes %>
+  </div>
+
+  <div class="actions">
+    <%= f.submit class: "btn btn-primary" %>
+    <%= link_to "Cancel", admin_contacts_path, class: "btn" %>
+  </div>
+<% end %>

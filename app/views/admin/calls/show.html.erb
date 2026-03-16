@@ -1,0 +1,76 @@
+<h1>Call Detail</h1>
+
+<div class="card">
+  <dl class="detail-grid">
+    <dt>Call SID</dt>
+    <dd><%= @call.call_sid %></dd>
+
+    <dt>From</dt>
+    <dd>
+      <%= @call.from_number %>
+      <% if @call.contact %>
+        (<%= link_to @call.contact.display_name, admin_contact_path(@call.contact) %>)
+      <% end %>
+    </dd>
+
+    <dt>To</dt>
+    <dd><%= @call.to_number %></dd>
+
+    <dt>Status</dt>
+    <dd><span class="badge badge-<%= @call.status %>"><%= @call.status %></span></dd>
+
+    <dt>Time</dt>
+    <dd><%= @call.created_at.in_time_zone("Europe/Rome").strftime("%H:%M:%S %d/%m/%Y") %></dd>
+
+    <dt>Duration</dt>
+    <dd><%= @call.duration_seconds ? "#{@call.duration_seconds}s" : "-" %></dd>
+  </dl>
+</div>
+
+<% if @call.screening_transcript.present? %>
+  <div class="card">
+    <h3>Screening Transcript</h3>
+    <p style="white-space: pre-wrap;"><%= @call.screening_transcript %></p>
+  </div>
+<% end %>
+
+<% if @call.ai_classification.present? %>
+  <div class="card">
+    <h3>AI Classification</h3>
+    <dl class="detail-grid">
+      <dt>Classification</dt>
+      <dd><span class="badge badge-<%= @call.ai_classification['classification'] %>"><%= @call.ai_classification["classification"] %></span></dd>
+      <dt>Confidence</dt>
+      <dd><%= @call.ai_confidence ? "#{(@call.ai_confidence * 100).round}%" : "-" %></dd>
+      <dt>Reason</dt>
+      <dd><%= @call.ai_reason %></dd>
+    </dl>
+  </div>
+<% end %>
+
+<% if @call.voicemail_transcript.present? %>
+  <div class="card">
+    <h3>Voicemail Transcript</h3>
+    <p style="white-space: pre-wrap;"><%= @call.voicemail_transcript %></p>
+  </div>
+<% end %>
+
+<% if @call.recording_local_path.present? %>
+  <div class="card">
+    <h3>Recording</h3>
+    <audio controls preload="metadata" style="width: 100%;">
+      <source src="<%= recording_path(@call.id) %>" type="audio/wav">
+    </audio>
+  </div>
+<% end %>
+
+<div class="actions" style="margin-top: 1rem;">
+  <% unless @call.spam? %>
+    <%= button_to "Mark Spam", mark_spam_admin_call_path(@call), class: "btn btn-danger btn-sm" %>
+  <% end %>
+  <% unless @call.legit? %>
+    <%= button_to "Mark Legit", mark_legit_admin_call_path(@call), class: "btn btn-sm" %>
+  <% end %>
+  <%= button_to "Block Number", block_number_admin_call_path(@call), class: "btn btn-danger btn-sm", data: { turbo_confirm: "Block #{@call.from_number}?" } %>
+  <%= link_to "Back", admin_calls_path, class: "btn btn-sm" %>
+</div>

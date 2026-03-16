@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Call Screener</title>
+  <%= csrf_meta_tags %>
+  <%= csp_meta_tag %>
+  <%= stylesheet_link_tag "application" %>
+  <%= javascript_importmap_tags %>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e1e4ed;
+      --text-muted: #8b8fa3;
+      --primary: #6366f1;
+      --primary-hover: #818cf8;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --spam: #ef4444;
+      --legit: #22c55e;
+      --uncertain: #f59e0b;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { color: var(--primary-hover); }
+
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); padding: 1rem 0; flex-shrink: 0; }
+    .sidebar h2 { padding: 0 1rem 1rem; font-size: 1rem; color: var(--text); border-bottom: 1px solid var(--border); margin-bottom: 0.5rem; }
+    .sidebar nav a { display: block; padding: 0.5rem 1rem; color: var(--text-muted); font-size: 0.875rem; }
+    .sidebar nav a:hover, .sidebar nav a.active { color: var(--text); background: var(--border); }
+    .sidebar .logout { margin-top: auto; padding: 1rem; border-top: 1px solid var(--border); }
+
+    .main { flex: 1; padding: 1.5rem 2rem; overflow-x: auto; }
+    .main h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+
+    .flash { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.875rem; }
+    .flash.notice { background: #1a2e1a; color: var(--success); border: 1px solid #2d4a2d; }
+    .flash.alert { background: #2e1a1a; color: var(--danger); border: 1px solid #4a2d2d; }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+    .stat-card .label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-card .value { font-size: 1.5rem; font-weight: 600; margin-top: 0.25rem; }
+
+    table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+    th { text-align: left; padding: 0.75rem 1rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); background: var(--bg); border-bottom: 1px solid var(--border); }
+    td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); font-size: 0.875rem; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(99, 102, 241, 0.05); }
+
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
+    .badge-spam { background: rgba(239, 68, 68, 0.15); color: var(--spam); }
+    .badge-legit { background: rgba(34, 197, 94, 0.15); color: var(--legit); }
+    .badge-uncertain { background: rgba(245, 158, 11, 0.15); color: var(--uncertain); }
+    .badge-screening { background: rgba(99, 102, 241, 0.15); color: var(--primary); }
+    .badge-completed { background: rgba(34, 197, 94, 0.15); color: var(--legit); }
+    .badge-failed { background: rgba(239, 68, 68, 0.15); color: var(--spam); }
+    .badge-initiated, .badge-recording { background: rgba(139, 143, 163, 0.15); color: var(--text-muted); }
+
+    .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.875rem; font-weight: 500; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+    .btn:hover { background: var(--border); color: var(--text); }
+    .btn-primary { background: var(--primary); border-color: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); color: white; }
+    .btn-danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+    .btn-danger:hover { background: var(--danger); color: white; }
+    .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: 0.875rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 0.5rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.875rem;
+    }
+    .form-group textarea { min-height: 80px; resize: vertical; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--primary); }
+    .form-check { display: flex; align-items: center; gap: 0.5rem; }
+    .form-check input[type="checkbox"] { width: auto; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }
+    .card h3 { font-size: 1rem; margin-bottom: 0.75rem; }
+
+    .toolbar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    .toolbar input[type="text"] { padding: 0.5rem 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.875rem; }
+
+    .pagination { display: flex; gap: 0.5rem; margin-top: 1rem; align-items: center; font-size: 0.875rem; color: var(--text-muted); }
+
+    .detail-grid { display: grid; grid-template-columns: 140px 1fr; gap: 0.5rem 1rem; font-size: 0.875rem; }
+    .detail-grid dt { color: var(--text-muted); }
+    .detail-grid dd { color: var(--text); }
+
+    .chart-container { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
+
+    .truncate { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .actions { display: flex; gap: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="sidebar">
+      <h2>Call Screener</h2>
+      <nav>
+        <%= link_to "Dashboard", admin_root_path, class: ("active" if controller_path == "admin/dashboard") %>
+        <%= link_to "Calls", admin_calls_path, class: ("active" if controller_path == "admin/calls") %>
+        <%= link_to "Contacts", admin_contacts_path, class: ("active" if controller_path == "admin/contacts") %>
+        <%= link_to "Rules", admin_rules_path, class: ("active" if controller_path == "admin/rules") %>
+        <%= link_to "Settings", admin_settings_path, class: ("active" if controller_path == "admin/settings") %>
+      </nav>
+      <div class="logout">
+        <%= link_to "Logout", destroy_admin_user_session_path, data: { turbo_method: :delete }, style: "color: var(--text-muted); font-size: 0.875rem;" %>
+      </div>
+    </div>
+    <div class="main">
+      <% if notice %><div class="flash notice"><%= notice %></div><% end %>
+      <% if alert %><div class="flash alert"><%= alert %></div><% end %>
+      <%= yield %>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<h1>Rules</h1>
+
+<div class="toolbar">
+  <%= link_to "New Rule", new_admin_rule_path, class: "btn btn-primary btn-sm" %>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Value</th>
+      <th>Action</th>
+      <th>Active</th>
+      <th>Priority</th>
+      <th>Hits</th>
+      <th>Description</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @rules.each do |rule| %>
+      <tr>
+        <td><%= rule.rule_type %></td>
+        <td><code><%= rule.value %></code></td>
+        <td>
+          <span class="badge badge-<%= rule.action_block? ? 'spam' : 'legit' %>"><%= rule.action %></span>
+        </td>
+        <td><%= rule.active? ? "Yes" : "No" %></td>
+        <td><%= rule.priority %></td>
+        <td><%= rule.hit_count %></td>
+        <td><%= rule.description %></td>
+        <td class="actions">
+          <%= link_to "Edit", edit_admin_rule_path(rule), class: "btn btn-sm" %>
+          <%= button_to "Delete", admin_rule_path(rule), method: :delete, class: "btn btn-danger btn-sm", data: { turbo_confirm: "Delete this rule?" } %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>

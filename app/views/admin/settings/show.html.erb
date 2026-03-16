@@ -1,0 +1,28 @@
+<h1>Settings</h1>
+
+<%= form_tag admin_settings_path, method: :patch, class: "card" do %>
+  <% @settings.each do |setting| %>
+    <div class="form-group">
+      <label for="settings_<%= setting.key %>"><%= setting.key.humanize %></label>
+      <% if setting.key == "greeting_text" || setting.key == "voicemail_prompt" %>
+        <textarea name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>"><%= setting.value %></textarea>
+      <% elsif setting.key == "greeting_language" %>
+        <select name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>">
+          <% [["Italian", "it-IT"], ["English", "en-US"], ["French", "fr-FR"], ["German", "de-DE"], ["Spanish", "es-ES"]].each do |label, val| %>
+            <option value="<%= val %>" <%= "selected" if setting.value == val %>><%= label %></option>
+          <% end %>
+        </select>
+      <% elsif setting.key == "greeting_voice" %>
+        <select name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>">
+          <% %w[alice man woman].each do |v| %>
+            <option value="<%= v %>" <%= "selected" if setting.value == v %>><%= v.capitalize %></option>
+          <% end %>
+        </select>
+      <% else %>
+        <input type="text" name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>" value="<%= setting.value %>">
+      <% end %>
+    </div>
+  <% end %>
+
+  <button type="submit" class="btn btn-primary">Save Settings</button>
+<% end %>

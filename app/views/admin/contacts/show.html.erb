@@ -1,0 +1,50 @@
+<h1><%= @contact.display_name %></h1>
+
+<div class="card">
+  <dl class="detail-grid">
+    <dt>Phone</dt>
+    <dd><%= @contact.phone %></dd>
+    <dt>Name</dt>
+    <dd><%= @contact.name || "-" %></dd>
+    <dt>Whitelisted</dt>
+    <dd><%= @contact.whitelisted? ? "Yes" : "No" %></dd>
+    <dt>Blacklisted</dt>
+    <dd><%= @contact.blacklisted? ? "Yes" : "No" %></dd>
+    <dt>Total Calls</dt>
+    <dd><%= @contact.calls_count %></dd>
+    <dt>Last Called</dt>
+    <dd><%= @contact.last_called_at&.in_time_zone("Europe/Rome")&.strftime("%H:%M %d/%m/%Y") || "-" %></dd>
+    <dt>Notes</dt>
+    <dd><%= @contact.notes || "-" %></dd>
+  </dl>
+</div>
+
+<div class="actions" style="margin-bottom: 1rem;">
+  <%= link_to "Edit", edit_admin_contact_path(@contact), class: "btn btn-sm" %>
+  <%= button_to "Delete", admin_contact_path(@contact), method: :delete, class: "btn btn-danger btn-sm", data: { turbo_confirm: "Delete this contact?" } %>
+  <%= link_to "Back", admin_contacts_path, class: "btn btn-sm" %>
+</div>
+
+<% if @calls.any? %>
+  <h3 style="margin-bottom: 0.5rem;">Recent Calls</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Status</th>
+        <th>Screening</th>
+        <th>Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @calls.each do |call| %>
+        <tr>
+          <td><%= link_to call.created_at.in_time_zone("Europe/Rome").strftime("%H:%M %d/%m"), admin_call_path(call) %></td>
+          <td><span class="badge badge-<%= call.status %>"><%= call.status %></span></td>
+          <td class="truncate"><%= truncate(call.screening_transcript, length: 80) %></td>
+          <td><%= call.duration_seconds ? "#{call.duration_seconds}s" : "-" %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>

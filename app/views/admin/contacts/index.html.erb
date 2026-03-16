@@ -1,0 +1,48 @@
+<h1>Contacts</h1>
+
+<div class="toolbar">
+  <%= form_tag admin_contacts_path, method: :get, style: "display: flex; gap: 0.5rem; align-items: center;" do %>
+    <input type="text" name="q" value="<%= params[:q] %>" placeholder="Search phone or name...">
+    <button type="submit" class="btn btn-sm">Search</button>
+  <% end %>
+  <%= link_to "New Contact", new_admin_contact_path, class: "btn btn-primary btn-sm" %>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Phone</th>
+      <th>Name</th>
+      <th>Whitelist</th>
+      <th>Blacklist</th>
+      <th>Calls</th>
+      <th>Last Called</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @contacts.each do |contact| %>
+      <tr>
+        <td><%= link_to contact.phone, admin_contact_path(contact) %></td>
+        <td><%= contact.name %></td>
+        <td><%= contact.whitelisted? ? "Yes" : "" %></td>
+        <td><%= contact.blacklisted? ? "Yes" : "" %></td>
+        <td><%= contact.calls_count %></td>
+        <td><%= contact.last_called_at&.in_time_zone("Europe/Rome")&.strftime("%d/%m/%y") %></td>
+        <td><%= link_to "Edit", edit_admin_contact_path(contact), class: "btn btn-sm" %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<% if @pagination && @pagination[:total_pages] > 1 %>
+  <div class="pagination">
+    <% if @pagination[:current_page] > 1 %>
+      <%= link_to "Prev", admin_contacts_path(page: @pagination[:current_page] - 1, q: params[:q]), class: "btn btn-sm" %>
+    <% end %>
+    <span>Page <%= @pagination[:current_page] %> of <%= @pagination[:total_pages] %></span>
+    <% if @pagination[:current_page] < @pagination[:total_pages] %>
+      <%= link_to "Next", admin_contacts_path(page: @pagination[:current_page] + 1, q: params[:q]), class: "btn btn-sm" %>
+    <% end %>
+  </div>
+<% end %>

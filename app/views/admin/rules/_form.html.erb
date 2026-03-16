@@ -1,0 +1,44 @@
+<%= form_with model: [:admin, @rule], class: "card" do |f| %>
+  <% if @rule.errors.any? %>
+    <div class="flash alert" style="margin-bottom: 1rem;">
+      <% @rule.errors.full_messages.each do |msg| %>
+        <div><%= msg %></div>
+      <% end %>
+    </div>
+  <% end %>
+
+  <div class="form-group">
+    <%= f.label :rule_type, "Type" %>
+    <%= f.select :rule_type, Rule.rule_types.keys.map { |t| [t.capitalize, t] }, include_blank: "Select type..." %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :value, "Value (phone prefix, keyword, or regex)" %>
+    <%= f.text_field :value, placeholder: "+3902 or telemarketing or ^\\+39(02|06).*" %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :action %>
+    <%= f.select :action, Rule.actions.keys.map { |a| [a.capitalize, a] } %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :priority, "Priority (higher = checked first)" %>
+    <%= f.number_field :priority, value: @rule.priority || 0 %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :description %>
+    <%= f.text_field :description %>
+  </div>
+
+  <div class="form-group form-check">
+    <%= f.check_box :active %>
+    <%= f.label :active %>
+  </div>
+
+  <div class="actions">
+    <%= f.submit class: "btn btn-primary" %>
+    <%= link_to "Cancel", admin_rules_path, class: "btn" %>
+  </div>
+<% end %>

@@ -1,0 +1,59 @@
+<h1>Calls</h1>
+
+<div class="toolbar">
+  <%= form_tag admin_calls_path, method: :get, style: "display: flex; gap: 0.5rem; align-items: center;" do %>
+    <input type="text" name="q" value="<%= params[:q] %>" placeholder="Search phone number...">
+    <select name="status" onchange="this.form.submit()">
+      <option value="">All statuses</option>
+      <% Call.statuses.keys.each do |s| %>
+        <option value="<%= s %>" <%= "selected" if params[:status] == s %>><%= s.capitalize %></option>
+      <% end %>
+    </select>
+    <button type="submit" class="btn btn-sm">Filter</button>
+  <% end %>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>From</th>
+      <th>Status</th>
+      <th>Screening</th>
+      <th>Voicemail</th>
+      <th>Duration</th>
+      <th>Confidence</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @calls.each do |call| %>
+      <tr>
+        <td><%= link_to call.created_at.in_time_zone("Europe/Rome").strftime("%H:%M %d/%m/%y"), admin_call_path(call) %></td>
+        <td>
+          <% if call.contact %>
+            <%= link_to call.contact_name, admin_contact_path(call.contact) %>
+          <% else %>
+            <%= call.from_number %>
+          <% end %>
+        </td>
+        <td><span class="badge badge-<%= call.status %>"><%= call.status %></span></td>
+        <td class="truncate"><%= truncate(call.screening_transcript, length: 60) %></td>
+        <td class="truncate"><%= truncate(call.voicemail_transcript, length: 60) %></td>
+        <td><%= call.duration_seconds ? "#{call.duration_seconds}s" : "-" %></td>
+        <td><%= call.ai_confidence ? "#{(call.ai_confidence * 100).round}%" : "-" %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<% if @pagination && @pagination[:total_pages] > 1 %>
+  <div class="pagination">
+    <% if @pagination[:current_page] > 1 %>
+      <%= link_to "Prev", admin_calls_path(page: @pagination[:current_page] - 1, status: params[:status], q: params[:q]), class: "btn btn-sm" %>
+    <% end %>
+    <span>Page <%= @pagination[:current_page] %> of <%= @pagination[:total_pages] %></span>
+    <% if @pagination[:current_page] < @pagination[:total_pages] %>
+      <%= link_to "Next", admin_calls_path(page: @pagination[:current_page] + 1, status: params[:status], q: params[:q]), class: "btn btn-sm" %>
+    <% end %>
+  </div>
+<% end %>

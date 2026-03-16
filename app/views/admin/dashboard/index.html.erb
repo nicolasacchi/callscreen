@@ -1,0 +1,68 @@
+<h1>Dashboard</h1>
+
+<div class="stats">
+  <div class="stat-card">
+    <div class="label">Today Total</div>
+    <div class="value"><%= @stats[:total_today] %></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Today Spam</div>
+    <div class="value" style="color: var(--spam)"><%= @stats[:spam_today] %></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Today Legit</div>
+    <div class="value" style="color: var(--legit)"><%= @stats[:legit_today] %></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Recorded</div>
+    <div class="value"><%= @stats[:recorded_today] %></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">All Calls</div>
+    <div class="value"><%= @stats[:total_all] %></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Contacts</div>
+    <div class="value"><%= @stats[:contacts] %></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Whitelisted</div>
+    <div class="value" style="color: var(--legit)"><%= @stats[:whitelisted] %></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Blacklisted</div>
+    <div class="value" style="color: var(--spam)"><%= @stats[:blacklisted] %></div>
+  </div>
+</div>
+
+<div class="chart-container">
+  <h3 style="margin-bottom: 0.5rem; font-size: 0.875rem; color: var(--text-muted);">Calls (30 days)</h3>
+  <%= line_chart [
+    { name: "Total", data: @daily_calls },
+    { name: "Spam", data: @daily_spam }
+  ], colors: ["#6366f1", "#ef4444"], library: { scales: { y: { beginAtZero: true } } } %>
+</div>
+
+<h3 style="margin-bottom: 0.75rem;">Recent Calls</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>From</th>
+      <th>Status</th>
+      <th>Screening</th>
+      <th>AI Reason</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @recent_calls.each do |call| %>
+      <tr>
+        <td><%= link_to call.created_at.in_time_zone("Europe/Rome").strftime("%H:%M %d/%m"), admin_call_path(call) %></td>
+        <td><%= call.contact_name %></td>
+        <td><span class="badge badge-<%= call.status %>"><%= call.status %></span></td>
+        <td class="truncate"><%= call.screening_transcript %></td>
+        <td class="truncate"><%= call.ai_reason %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
