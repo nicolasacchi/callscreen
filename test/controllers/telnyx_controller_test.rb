@@ -8,14 +8,69 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   # === Authentication ===
 
-  test "rejects voice webhook with no token" do
+  test "rejects voice webhook with no token (fallback path, sig absent)" do
     post telnyx_voice_url, params: { CallSid: "abc123", From: "+393331111111", To: "+390000000000" }
     assert_response :unauthorized
   end
 
-  test "rejects voice webhook with wrong token" do
+  test "rejects voice webhook with wrong token (fallback path)" do
     post telnyx_voice_url(token: "nope"), params: { CallSid: "abc123", From: "+393331111111", To: "+390000000000" }
     assert_response :unauthorized
+  end
+
+  test "rejects voice webhook when fallback is disabled and no signature" do
+    ENV["WEBHOOK_TOKEN_FALLBACK"] = "0"
+    post telnyx_voice_url(token: @token), params: { CallSid: "abc123", From: "+393331111111", To: "+390000000000" }
+    assert_response :unauthorized
+  ensure
+    ENV["WEBHOOK_TOKEN_FALLBACK"] = "1"
+  end
+
+  test "accepts voice webhook with valid Ed25519 signature (no token)" do
+    private_key = OpenSSL::PKey.generate_key("ED25519")
+    raw_pub = private_key.raw_public_key
+    ENV["TELNYX_PUBLIC_KEY"] = Base64.strict_encode64(raw_pub)
+    ENV["WEBHOOK_TOKEN_FALLBACK"] = "0"
+
+    body = "CallSid=signed-call-001&From=%2B393331111111&To=%2B390000000000"
+    timestamp = Time.now.to_i.to_s
+    signing_input = "#{timestamp}|#{body}"
+    signature = Base64.strict_encode64(private_key.sign(nil, signing_input))
+
+    post telnyx_voice_url,
+         params: body,
+         headers: {
+           "Content-Type" => "application/x-www-form-urlencoded",
+           "Telnyx-Signature-Ed25519" => signature,
+           "Telnyx-Timestamp" => timestamp
+         }
+    assert_response :success
+    assert_match(/<Gather/, @response.body)
+  ensure
+    ENV.delete("TELNYX_PUBLIC_KEY")
+    ENV["WEBHOOK_TOKEN_FALLBACK"] = "1"
+  end
+
+  test "rejects voice webhook with tampered Ed25519 signature" do
+    private_key = OpenSSL::PKey.generate_key("ED25519")
+    ENV["TELNYX_PUBLIC_KEY"] = Base64.strict_encode64(private_key.raw_public_key)
+    ENV["WEBHOOK_TOKEN_FALLBACK"] = "0"
+
+    body = "CallSid=tampered-001&From=%2B39"
+    timestamp = Time.now.to_i.to_s
+    bad_signature = Base64.strict_encode64("\x00" * 64)
+
+    post telnyx_voice_url,
+         params: body,
+         headers: {
+           "Content-Type" => "application/x-www-form-urlencoded",
+           "Telnyx-Signature-Ed25519" => bad_signature,
+           "Telnyx-Timestamp" => timestamp
+         }
+    assert_response :unauthorized
+  ensure
+    ENV.delete("TELNYX_PUBLIC_KEY")
+    ENV["WEBHOOK_TOKEN_FALLBACK"] = "1"
   end
 
   test "rejects voice webhook with malformed CallSid (path traversal)" do

@@ -1,5 +1,9 @@
 ENV["RAILS_ENV"] ||= "test"
 ENV["WEBHOOK_TOKEN"] ||= "test-webhook-token"
+# Keep token-fallback enabled in tests so existing webhook tests using ?token=
+# continue to work without fabricating Ed25519 signatures everywhere.
+# Tests that exercise signature verification override this explicitly.
+ENV["WEBHOOK_TOKEN_FALLBACK"] ||= "1"
 ENV["APP_DOMAIN"] ||= "https://callscreen.test"
 ENV["OPENROUTER_API_KEY"] ||= "test-openrouter-key"
 ENV["OPENROUTER_MODEL"] ||= "anthropic/claude-sonnet-4-20250514"
