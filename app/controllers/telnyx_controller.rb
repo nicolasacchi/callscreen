@@ -11,11 +11,8 @@ class TelnyxController < ApplicationController
     to = params[:To]
 
     contact = Contact.find_or_initialize_by(phone: from)
-    if contact.new_record?
-      contact.save!
-    else
-      contact.update!(last_called_at: Time.current)
-    end
+    contact.last_called_at = Time.current
+    contact.save!
 
     call = Call.create!(
       call_sid: call_sid,
