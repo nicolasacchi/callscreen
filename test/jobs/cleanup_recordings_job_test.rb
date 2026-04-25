@@ -37,4 +37,38 @@ class CleanupRecordingsJobTest < ActiveJob::TestCase
     FileUtils.rm_f(old_path) if defined?(old_path)
     FileUtils.rm_f(new_path) if defined?(new_path)
   end
+
+  test "nullifies transcripts and ai_classification past retention (NEW H11 GDPR)" do
+    Setting.set("auto_delete_transcripts_days", "30")
+
+    old_call = Call.create!(
+      call_sid: "old-transcripts-test",
+      from_number: "+393339999999",
+      status: :completed,
+      voicemail_transcript: "old voicemail content",
+      screening_transcript: "old screening content",
+      ai_classification: { "classification" => "spam", "confidence" => 0.9 },
+      created_at: 60.days.ago
+    )
+
+    fresh_call = Call.create!(
+      call_sid: "fresh-transcripts-test",
+      from_number: "+393338888888",
+      status: :completed,
+      voicemail_transcript: "recent voicemail",
+      ai_classification: { "classification" => "legit", "confidence" => 0.8 },
+      created_at: 5.days.ago
+    )
+
+    CleanupRecordingsJob.new.perform
+
+    old_call.reload
+    assert_nil old_call.voicemail_transcript
+    assert_nil old_call.screening_transcript
+    assert_nil old_call.ai_classification
+
+    fresh_call.reload
+    assert_equal "recent voicemail", fresh_call.voicemail_transcript
+    assert_equal "legit", fresh_call.ai_classification["classification"]
+  end
 end

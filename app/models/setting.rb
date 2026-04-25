@@ -9,13 +9,15 @@ class Setting < ApplicationRecord
     "spam_sensitivity" => "0.5",
     "max_recording_seconds" => "120",
     "screening_speech_timeout" => "auto",
-    "auto_delete_days" => "30"
+    "auto_delete_days" => "30",
+    "auto_delete_transcripts_days" => "30"
   }.freeze
 
   VALIDATORS = {
     "spam_sensitivity" => :validate_sensitivity,
     "max_recording_seconds" => :validate_recording_seconds,
     "auto_delete_days" => :validate_delete_days,
+    "auto_delete_transcripts_days" => :validate_delete_days,
     "greeting_language" => :validate_language,
     "greeting_voice" => :validate_voice,
     "screening_speech_timeout" => :validate_speech_timeout,
