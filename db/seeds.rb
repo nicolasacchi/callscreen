@@ -1,5 +1,10 @@
 admin_email = ENV.fetch("ADMIN_EMAIL", "admin@callscreen.local")
-admin_password = ENV.fetch("ADMIN_PASSWORD", "changeme123!")
+admin_password = ENV.fetch("ADMIN_PASSWORD") do
+  if Rails.env.production?
+    raise "ADMIN_PASSWORD environment variable is required in production"
+  end
+  "changeme123!"
+end
 
 AdminUser.find_or_create_by!(email: admin_email) do |admin|
   admin.password = admin_password

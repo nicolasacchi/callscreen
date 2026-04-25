@@ -13,6 +13,7 @@ class WhisperClient
         language: "it",
         response_format: "json"
       },
+      headers: { "X-Request-ID" => Current.request_id.to_s },
       timeout: 120
     )
 

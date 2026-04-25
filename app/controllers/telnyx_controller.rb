@@ -1,19 +1,18 @@
 class TelnyxController < ApplicationController
+  CALL_SID_FORMAT = /\A[A-Za-z0-9_-]{1,64}\z/
+
   skip_before_action :verify_authenticity_token
-  before_action :verify_webhook_token
+  before_action :verify_telnyx_request
+  before_action :verify_call_sid_format, only: [ :voice ]
 
   def voice
+    call_sid = params[:CallSid].to_s
     from = PhoneNumberNormalizer.normalize(params[:From])
     to = params[:To]
-    call_sid = params[:CallSid]
 
     contact = Contact.find_or_initialize_by(phone: from)
-    if contact.new_record?
-      contact.save!
-    else
-      contact.increment!(:calls_count)
-      contact.update!(last_called_at: Time.current)
-    end
+    contact.last_called_at = Time.current
+    contact.save!
 
     call = Call.create!(
       call_sid: call_sid,
@@ -157,18 +156,45 @@ class TelnyxController < ApplicationController
 
   private
 
-  def verify_webhook_token
-    token = params[:token]
+  def verify_telnyx_request
+    return if signature_valid?
+    return if fallback_token_valid?
+    head :unauthorized
+  end
+
+  def signature_valid?
+    sig = request.headers["Telnyx-Signature-Ed25519"]
+    ts  = request.headers["Telnyx-Timestamp"]
+    return false if sig.blank? || ts.blank?
+
+    request.body.rewind
+    payload = request.body.read
+
+    TelnyxSignatureVerifier.new.verify(payload: payload, signature: sig, timestamp: ts)
+  end
+
+  def fallback_token_valid?
+    return false unless fallback_enabled?
     expected = ENV.fetch("WEBHOOK_TOKEN", "")
-    unless expected.present? && ActiveSupport::SecurityUtils.secure_compare(token.to_s, expected)
-      head :unauthorized
-    end
+    expected.present? && ActiveSupport::SecurityUtils.secure_compare(params[:token].to_s, expected)
+  end
+
+  def fallback_enabled?
+    ENV["WEBHOOK_TOKEN"].present? && ENV["WEBHOOK_TOKEN_FALLBACK"] != "0"
+  end
+
+  def verify_call_sid_format
+    head :bad_request unless params[:CallSid].to_s.match?(CALL_SID_FORMAT)
   end
 
   def webhook_url(action)
     app_domain = ENV.fetch("APP_DOMAIN", "https://phone.example.com")
-    token = ENV.fetch("WEBHOOK_TOKEN", "")
-    "#{app_domain}/telnyx/#{action}?token=#{token}"
+    base = "#{app_domain}/telnyx/#{action}"
+    if fallback_enabled?
+      "#{base}?token=#{ENV.fetch('WEBHOOK_TOKEN', '')}"
+    else
+      base
+    end
   end
 
   def render_texml(xml)

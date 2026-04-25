@@ -10,14 +10,14 @@ class NotifyJob < ApplicationJob
         title: "Spam: #{call.from_number}",
         message: spam_message(call),
         priority: "low",
-        tags: ["no_entry", "spam"]
+        tags: [ "no_entry", "spam" ]
       )
     else
       NtfyNotifier.notify(
         title: "Call: #{call.contact_name}",
         message: legit_message(call),
         priority: "high",
-        tags: ["phone", call.status]
+        tags: [ "phone", call.status ]
       )
     end
 
@@ -27,14 +27,14 @@ class NotifyJob < ApplicationJob
   private
 
   def spam_message(call)
-    parts = ["From: #{call.from_number}"]
+    parts = [ "From: #{call.from_number}" ]
     parts << "Reason: #{call.ai_reason}" if call.ai_reason
     parts << "Said: #{call.screening_transcript}" if call.screening_transcript.present?
     parts.join("\n")
   end
 
   def legit_message(call)
-    parts = ["From: #{call.from_number}"]
+    parts = [ "From: #{call.from_number}" ]
     parts << "Contact: #{call.contact&.name}" if call.contact&.name.present?
     parts << "Said: #{call.screening_transcript}" if call.screening_transcript.present?
     parts << "Classification: #{call.ai_reason}" if call.ai_reason

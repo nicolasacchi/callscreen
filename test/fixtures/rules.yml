@@ -1,0 +1,23 @@
+block_premium:
+  rule_type: 0 # prefix
+  action: 1 # block
+  value: "+39899"
+  active: true
+  priority: 100
+  description: "Block Italian premium-rate numbers"
+
+block_warranty_keyword:
+  rule_type: 1 # keyword
+  action: 1 # block
+  value: "warranty"
+  active: true
+  priority: 50
+  description: "Block calls mentioning warranty"
+
+allow_doctor_prefix:
+  rule_type: 0 # prefix
+  action: 0 # allow
+  value: "+39800"
+  active: true
+  priority: 200
+  description: "Allow doctor toll-free range"

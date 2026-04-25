@@ -2,7 +2,10 @@ module Admin
   class ContactsController < BaseController
     def index
       scope = Contact.order(last_called_at: :desc)
-      scope = scope.where("phone LIKE ? OR name LIKE ?", "%#{params[:q]}%", "%#{params[:q]}%") if params[:q].present?
+      if params[:q].present?
+        like = ActiveRecord::Base.sanitize_sql_like(params[:q].to_s, "!")
+        scope = scope.where("phone LIKE ? ESCAPE '!' OR name LIKE ? ESCAPE '!'", "%#{like}%", "%#{like}%")
+      end
       @contacts = paginate(scope)
     end
 

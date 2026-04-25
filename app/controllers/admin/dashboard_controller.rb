@@ -1,10 +1,11 @@
 module Admin
   class DashboardController < BaseController
     def index
+      today_by_status = Call.today.group(:status).count
       @stats = {
-        total_today: Call.today.count,
-        spam_today: Call.today.spam.count,
-        legit_today: Call.today.legit.count,
+        total_today: today_by_status.values.sum,
+        spam_today: today_by_status["spam"] || 0,
+        legit_today: today_by_status["legit"] || 0,
         recorded_today: Call.today.where.not(recording_url: nil).count,
         total_all: Call.count,
         contacts: Contact.count,
@@ -21,6 +22,7 @@ module Admin
                         .count
 
       @recent_calls = Call.recent.includes(:contact).limit(15)
+      @recent_audits = AuditLog.recent.includes(:admin_user).limit(10)
     end
   end
 end

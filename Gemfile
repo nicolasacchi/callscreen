@@ -28,10 +28,18 @@ gem "phonelib"
 # Rate limiting
 gem "rack-attack"
 
+# Error tracking (no-op when SENTRY_DSN is unset)
+gem "sentry-ruby"
+gem "sentry-rails"
+
 group :development, :test do
   gem "debug", platforms: %i[mri windows], require: "debug/prelude"
   gem "brakeman", require: false
   gem "rubocop-rails-omakase", require: false
+end
+
+group :test do
+  gem "webmock", require: false
 end
 
 group :development do

@@ -1,7 +1,12 @@
 class ApplicationJob < ActiveJob::Base
-  # Automatically retry jobs that encountered a deadlock
-  # retry_on ActiveRecord::Deadlocked
+  around_perform :set_current_request_id
 
-  # Most jobs are safe to ignore if the underlying records are no longer available
-  # discard_on ActiveJob::DeserializationError
+  private
+
+  def set_current_request_id
+    Current.request_id ||= "job-#{job_id}"
+    yield
+  ensure
+    Current.clear_all
+  end
 end
