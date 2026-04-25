@@ -2,7 +2,9 @@ class TranscribeRecordingJob < ApplicationJob
   TELNYX_HOST_REGEX = /\A[a-z0-9.-]+\.telnyx\.com\z/i
 
   queue_as :default
-  retry_on StandardError, wait: :polynomially_longer, attempts: 3
+  discard_on ActiveRecord::RecordNotFound
+  retry_on Net::OpenTimeout, Net::ReadTimeout, HTTParty::Error,
+           wait: :polynomially_longer, attempts: 3
 
   def perform(call_id)
     call = Call.find(call_id)
@@ -24,11 +26,11 @@ class TranscribeRecordingJob < ApplicationJob
     )
     call.update!(notified_at: Time.current)
   rescue => e
-    Rails.logger.error("TranscribeRecordingJob failed for call #{call_id}: #{e.message}")
+    Rails.logger.error("TranscribeRecordingJob failed for call #{call_id} (#{e.class.name})")
     call&.update!(status: :failed)
     NtfyNotifier.notify(
-      title: "Transcription failed: #{call&.from_number}",
-      message: "Call #{call_id}: #{e.message}",
+      title: "Transcription failed",
+      message: "Call #{call_id} failed transcription (#{e.class.name})",
       priority: "high",
       tags: [ "warning" ]
     )
