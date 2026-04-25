@@ -21,6 +21,7 @@ module Admin
                         .count
 
       @recent_calls = Call.recent.includes(:contact).limit(15)
+      @recent_audits = AuditLog.recent.includes(:admin_user).limit(10)
     end
   end
 end

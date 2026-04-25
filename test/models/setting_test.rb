@@ -31,4 +31,65 @@ class SettingTest < ActiveSupport::TestCase
     assert_equal "0.5", sensitivity.value
     assert_equal Setting::DEFAULTS.size, list.size
   end
+
+  # === Validators (NEW M13) ===
+
+  test "set accepts valid spam_sensitivity in 0..1" do
+    assert_nothing_raised { Setting.set("spam_sensitivity", "0.0") }
+    assert_nothing_raised { Setting.set("spam_sensitivity", "0.7") }
+    assert_nothing_raised { Setting.set("spam_sensitivity", "1.0") }
+  end
+
+  test "set rejects spam_sensitivity outside 0..1 or non-numeric" do
+    assert_raises(Setting::InvalidValue) { Setting.set("spam_sensitivity", "1.5") }
+    assert_raises(Setting::InvalidValue) { Setting.set("spam_sensitivity", "-0.1") }
+    assert_raises(Setting::InvalidValue) { Setting.set("spam_sensitivity", "abc") }
+  end
+
+  test "set rejects max_recording_seconds outside 5..600" do
+    assert_raises(Setting::InvalidValue) { Setting.set("max_recording_seconds", "0") }
+    assert_raises(Setting::InvalidValue) { Setting.set("max_recording_seconds", "9999") }
+    assert_raises(Setting::InvalidValue) { Setting.set("max_recording_seconds", "abc") }
+    assert_nothing_raised { Setting.set("max_recording_seconds", "120") }
+  end
+
+  test "set rejects malformed greeting_language" do
+    assert_raises(Setting::InvalidValue) { Setting.set("greeting_language", "english") }
+    assert_raises(Setting::InvalidValue) { Setting.set("greeting_language", "EN-US") }
+    assert_nothing_raised { Setting.set("greeting_language", "it-IT") }
+    assert_nothing_raised { Setting.set("greeting_language", "en-US") }
+  end
+
+  test "set rejects greeting_voice with XML-attribute-injection characters" do
+    assert_raises(Setting::InvalidValue) do
+      Setting.set("greeting_voice", 'alice"><Hangup/><Say voice="alice')
+    end
+    assert_raises(Setting::InvalidValue) { Setting.set("greeting_voice", "<script>") }
+    assert_nothing_raised { Setting.set("greeting_voice", "Polly.Bianca-Neural") }
+  end
+
+  test "set rejects greeting_text longer than 500 chars" do
+    assert_raises(Setting::InvalidValue) { Setting.set("greeting_text", "x" * 501) }
+    assert_nothing_raised { Setting.set("greeting_text", "x" * 500) }
+    assert_raises(Setting::InvalidValue) { Setting.set("greeting_text", "") }
+  end
+
+  test "screening_speech_timeout accepts auto or integer 1..60" do
+    assert_nothing_raised { Setting.set("screening_speech_timeout", "auto") }
+    assert_nothing_raised { Setting.set("screening_speech_timeout", "5") }
+    assert_raises(Setting::InvalidValue) { Setting.set("screening_speech_timeout", "0") }
+    assert_raises(Setting::InvalidValue) { Setting.set("screening_speech_timeout", "abc") }
+  end
+
+  test "auto_delete_days accepts 1..3650" do
+    assert_nothing_raised { Setting.set("auto_delete_days", "30") }
+    assert_nothing_raised { Setting.set("auto_delete_days", "365") }
+    assert_raises(Setting::InvalidValue) { Setting.set("auto_delete_days", "0") }
+    assert_raises(Setting::InvalidValue) { Setting.set("auto_delete_days", "10000") }
+  end
+
+  test "set ignores unknown keys (no validator, persists raw)" do
+    assert_nothing_raised { Setting.set("custom_unknown_key", "anything goes") }
+    assert_equal "anything goes", Setting.find_by(key: "custom_unknown_key").value
+  end
 end

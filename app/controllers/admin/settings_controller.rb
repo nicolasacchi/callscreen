@@ -5,10 +5,22 @@ module Admin
     end
 
     def update
+      errors = []
       params[:settings]&.each do |key, value|
-        Setting.set(key, value) if Setting::DEFAULTS.key?(key)
+        next unless Setting::DEFAULTS.key?(key)
+
+        begin
+          Setting.set(key, value)
+        rescue Setting::InvalidValue => e
+          errors << e.message
+        end
       end
-      redirect_to admin_settings_path, notice: "Settings updated."
+
+      if errors.empty?
+        redirect_to admin_settings_path, notice: "Settings updated."
+      else
+        redirect_to admin_settings_path, alert: errors.join(". ")
+      end
     end
   end
 end

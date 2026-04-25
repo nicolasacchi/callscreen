@@ -44,4 +44,20 @@ class TexmlBuilderTest < ActiveSupport::TestCase
     say_text = REXML::XPath.first(doc, "//Say").text
     assert_equal "Ciao <stranger> & friend", say_text
   end
+
+  test "escapes double-quotes in attribute values (NEW H9 regression)" do
+    # Bypass Setting.set validation to simulate a corrupted-DB scenario.
+    # Even if the validator is bypassed, Nokogiri's attribute escaping must hold.
+    Setting.where(key: "greeting_voice").destroy_all
+    Setting.create!(key: "greeting_voice", value: 'alice"><Hangup/><Say voice="alice')
+
+    xml = TexmlBuilder.greeting_and_gather(action_url: "https://example.test/screen")
+    doc = REXML::Document.new(xml)
+
+    say = REXML::XPath.first(doc, "//Say")
+    assert_equal 'alice"><Hangup/><Say voice="alice', say.attribute("voice").value,
+                 "voice attribute must round-trip the literal string without breaking XML"
+    # The structural Hangup (after Gather) is intentional; assert exactly one.
+    assert_equal 1, REXML::XPath.match(doc, "//Hangup").size
+  end
 end

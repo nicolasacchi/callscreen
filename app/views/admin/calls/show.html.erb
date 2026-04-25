@@ -39,7 +39,7 @@
     <h3>AI Classification</h3>
     <dl class="detail-grid">
       <dt>Classification</dt>
-      <dd><span class="badge badge-<%= @call.ai_classification['classification'] %>"><%= @call.ai_classification["classification"] %></span></dd>
+      <dd><span class="badge <%= classification_badge_class(@call.ai_classification["classification"]) %>"><%= classification_display(@call.ai_classification["classification"]) %></span></dd>
       <dt>Confidence</dt>
       <dd><%= @call.ai_confidence ? "#{(@call.ai_confidence * 100).round}%" : "-" %></dd>
       <dt>Reason</dt>

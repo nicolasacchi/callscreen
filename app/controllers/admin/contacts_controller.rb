@@ -3,8 +3,8 @@ module Admin
     def index
       scope = Contact.order(last_called_at: :desc)
       if params[:q].present?
-        like = ActiveRecord::Base.sanitize_sql_like(params[:q].to_s)
-        scope = scope.where("phone LIKE ? OR name LIKE ?", "%#{like}%", "%#{like}%")
+        like = ActiveRecord::Base.sanitize_sql_like(params[:q].to_s, "!")
+        scope = scope.where("phone LIKE ? ESCAPE '!' OR name LIKE ? ESCAPE '!'", "%#{like}%", "%#{like}%")
       end
       @contacts = paginate(scope)
     end
