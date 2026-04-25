@@ -1,0 +1,17 @@
+unknown:
+  phone: "+393331111111"
+  calls_count: 0
+
+regular:
+  phone: "+393332222222"
+  name: "Mario Rossi"
+  calls_count: 3
+
+vip:
+  phone: "+393333333333"
+  name: "Doctor"
+  whitelisted: true
+
+spammer:
+  phone: "+393334444444"
+  blacklisted: true

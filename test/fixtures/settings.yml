@@ -1,0 +1,2 @@
+# Settings rely on Setting::DEFAULTS at runtime;
+# fixtures override only when a test specifically needs persisted values.
