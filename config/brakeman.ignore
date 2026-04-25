@@ -1,0 +1,27 @@
+{
+  "ignored_warnings": [
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "1357c135040c2f9695269a2456098b9518bcc1755e2ae8eb95bc48597b1edabf",
+      "check_name": "SendFile",
+      "message": "Model attribute used in file name",
+      "file": "app/controllers/recordings_controller.rb",
+      "line": 14,
+      "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
+      "code": "send_file(Rails.root.join(\"storage\", \"recordings\").join(\"#{Call.find(params[:id]).call_sid}.wav\"), :type => \"audio/wav\", :disposition => :inline)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "RecordingsController",
+        "method": "show"
+      },
+      "user_input": "Call.find(params[:id]).call_sid",
+      "confidence": "Weak",
+      "cwe_id": [22],
+      "note": "False positive. call_sid is validated by FILENAME_FORMAT regex (/A[A-Za-z0-9_-]{1,64}z/) before path construction in RecordingsController#show, and again at webhook entry in TelnyxController#verify_call_sid_format. Path is built from static Rails.root + regex-validated call_sid + literal .wav suffix - no traversal possible. Reviewed 2026-04-25."
+    }
+  ],
+  "updated": "2026-04-25 14:39:00 +0200",
+  "brakeman_version": "8.0.4"
+}

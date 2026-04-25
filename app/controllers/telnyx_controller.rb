@@ -1,17 +1,19 @@
 class TelnyxController < ApplicationController
+  CALL_SID_FORMAT = /\A[A-Za-z0-9_-]{1,64}\z/
+
   skip_before_action :verify_authenticity_token
   before_action :verify_webhook_token
+  before_action :verify_call_sid_format, only: [ :voice ]
 
   def voice
+    call_sid = params[:CallSid].to_s
     from = PhoneNumberNormalizer.normalize(params[:From])
     to = params[:To]
-    call_sid = params[:CallSid]
 
     contact = Contact.find_or_initialize_by(phone: from)
     if contact.new_record?
       contact.save!
     else
-      contact.increment!(:calls_count)
       contact.update!(last_called_at: Time.current)
     end
 
@@ -163,6 +165,10 @@ class TelnyxController < ApplicationController
     unless expected.present? && ActiveSupport::SecurityUtils.secure_compare(token.to_s, expected)
       head :unauthorized
     end
+  end
+
+  def verify_call_sid_format
+    head :bad_request unless params[:CallSid].to_s.match?(CALL_SID_FORMAT)
   end
 
   def webhook_url(action)

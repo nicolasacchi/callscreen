@@ -3,7 +3,10 @@ module Admin
     def index
       scope = Call.recent.includes(:contact)
       scope = scope.where(status: params[:status]) if params[:status].present?
-      scope = scope.where("from_number LIKE ?", "%#{params[:q]}%") if params[:q].present?
+      if params[:q].present?
+        like = ActiveRecord::Base.sanitize_sql_like(params[:q].to_s)
+        scope = scope.where("from_number LIKE ?", "%#{like}%")
+      end
       @calls = paginate(scope)
     end
 

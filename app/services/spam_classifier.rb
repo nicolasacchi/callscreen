@@ -22,13 +22,15 @@ class SpamClassifier
       timeout: 15
     )
 
+    return uncertain("HTTP #{response.code}") unless response.success?
+
     parse_response(response)
   rescue Net::OpenTimeout, Net::ReadTimeout => e
     Rails.logger.error("SpamClassifier timeout: #{e.message}")
     uncertain("LLM timeout")
   rescue => e
-    Rails.logger.error("SpamClassifier error: #{e.class}: #{e.message}")
-    uncertain("Classification error: #{e.message}")
+    Rails.logger.error("SpamClassifier error: #{e.class}")
+    uncertain("Classification error")
   end
 
   private
@@ -64,10 +66,12 @@ class SpamClassifier
   def parse_response(response)
     body = JSON.parse(response.body)
     content = body.dig("choices", 0, "message", "content")
-    result = JSON.parse(content)
-    result.transform_keys(&:to_s)
+    result = JSON.parse(content.to_s)
+    result.slice("classification", "confidence", "reason").transform_values do |v|
+      v.is_a?(String) ? v.first(500) : v
+    end
   rescue JSON::ParserError => e
-    Rails.logger.error("SpamClassifier JSON parse error: #{e.message}, content: #{content}")
+    Rails.logger.error("SpamClassifier JSON parse error: #{e.class}")
     uncertain("Failed to parse LLM response")
   end
 

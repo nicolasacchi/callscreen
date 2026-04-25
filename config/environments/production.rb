@@ -70,6 +70,6 @@ Rails.application.configure do
   config.active_record.attributes_for_inspect = [ :id ]
 
   # Allow the configured domain and health checks
-  config.hosts = [ENV.fetch("APP_DOMAIN", "phone.example.com").gsub(%r{https?://}, ""), "localhost"]
+  config.hosts = [ ENV.fetch("APP_DOMAIN", "phone.example.com").gsub(%r{https?://}, ""), "localhost" ]
   config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 end
