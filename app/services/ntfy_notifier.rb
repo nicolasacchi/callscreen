@@ -19,7 +19,8 @@ class NtfyNotifier
         headers: {
           "Title" => title.to_s.truncate(100),
           "Priority" => priority || ENV.fetch("NTFY_PRIORITY", "default"),
-          "Tags" => Array(tags).join(",")
+          "Tags" => Array(tags).join(","),
+          "X-Request-ID" => Current.request_id.to_s
         },
         body: message.to_s,
         timeout: 10

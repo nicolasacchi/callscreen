@@ -13,7 +13,8 @@ class SpamClassifier
       headers: {
         "Authorization" => "Bearer #{ENV['OPENROUTER_API_KEY']}",
         "Content-Type" => "application/json",
-        "X-Title" => "AI Call Screener"
+        "X-Title" => "AI Call Screener",
+        "X-Request-ID" => Current.request_id.to_s
       },
       body: {
         model: ENV.fetch("OPENROUTER_MODEL", "anthropic/claude-sonnet-4-20250514"),

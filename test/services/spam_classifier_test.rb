@@ -72,6 +72,17 @@ class SpamClassifierTest < ActiveSupport::TestCase
     end
   end
 
+  test "propagates Current.request_id as X-Request-ID header (M8)" do
+    Current.request_id = "req-test-correlation-1"
+    stub_openrouter(body: { classification: "uncertain", confidence: 0.5, reason: "ok" })
+
+    SpamClassifier.new("hi", from_number: "+39").classify
+
+    assert_requested :post, ENDPOINT, headers: { "X-Request-Id" => "req-test-correlation-1" }
+  ensure
+    Current.clear_all
+  end
+
   private
 
   def stub_openrouter(body:)
