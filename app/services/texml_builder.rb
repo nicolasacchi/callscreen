@@ -6,14 +6,16 @@ class TexmlBuilder
       language = Setting.get("greeting_language")
       voice = Setting.get("greeting_voice")
       greeting = Setting.get("greeting_text")
-      timeout = Setting.get("screening_speech_timeout")
+      speech_timeout = Setting.get("screening_speech_timeout")
+      engine = Setting.get("transcription_engine")
 
       build_response do |xml|
         xml.Gather(
           input: "speech",
-          speechTimeout: timeout,
+          timeout: 10,
+          speechTimeout: speech_timeout,
           language: language,
-          transcriptionEngine: "Google",
+          transcriptionEngine: engine,
           action: action_url,
           method: "POST"
         ) do

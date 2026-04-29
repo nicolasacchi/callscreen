@@ -10,8 +10,11 @@ class Setting < ApplicationRecord
     "max_recording_seconds" => "120",
     "screening_speech_timeout" => "auto",
     "auto_delete_days" => "30",
-    "auto_delete_transcripts_days" => "30"
+    "auto_delete_transcripts_days" => "30",
+    "transcription_engine" => "Google"
   }.freeze
+
+  ALLOWED_TRANSCRIPTION_ENGINES = %w[Google Telnyx Azure Deepgram].freeze
 
   VALIDATORS = {
     "spam_sensitivity" => :validate_sensitivity,
@@ -22,7 +25,8 @@ class Setting < ApplicationRecord
     "greeting_voice" => :validate_voice,
     "screening_speech_timeout" => :validate_speech_timeout,
     "greeting_text" => :validate_text,
-    "voicemail_prompt" => :validate_text
+    "voicemail_prompt" => :validate_text,
+    "transcription_engine" => :validate_transcription_engine
   }.freeze
 
   class InvalidValue < ArgumentError; end
@@ -80,5 +84,9 @@ class Setting < ApplicationRecord
   def self.validate_text(v)
     s = v.to_s
     s.length.between?(1, 500)
+  end
+
+  def self.validate_transcription_engine(v)
+    ALLOWED_TRANSCRIPTION_ENGINES.include?(v.to_s)
   end
 end

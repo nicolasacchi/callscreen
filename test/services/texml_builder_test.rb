@@ -18,6 +18,16 @@ class TexmlBuilderTest < ActiveSupport::TestCase
     assert_equal "Google", gather.attribute("transcriptionEngine").value,
                  "Without transcriptionEngine, Telnyx returns empty SpeechResult"
     assert_equal "speech", gather.attribute("input").value
+    assert_equal "10", gather.attribute("timeout").value,
+                 "Default 5s pre-speech wait is too short after the Italian greeting"
+  end
+
+  test "greeting_and_gather reads transcription_engine from Setting" do
+    Setting.set("transcription_engine", "Telnyx")
+    xml = TexmlBuilder.greeting_and_gather(action_url: "https://example.test/screen")
+    doc = REXML::Document.new(xml)
+    gather = REXML::XPath.first(doc, "//Gather")
+    assert_equal "Telnyx", gather.attribute("transcriptionEngine").value
   end
 
   test "record_voicemail output is valid XML with Say + Record" do
