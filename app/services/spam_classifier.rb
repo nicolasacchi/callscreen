@@ -24,7 +24,9 @@ class SpamClassifier
         max_tokens: 1024,
         temperature: 1
       }.to_json,
-      timeout: 15
+      # Reasoning models can take 10-25s end-to-end. Telnyx's outbound webhook
+      # timeout is ~30s; keep below that with margin so we always return TeXML.
+      timeout: 28
     )
 
     return uncertain("HTTP #{response.code}") unless response.success?
