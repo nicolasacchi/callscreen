@@ -19,7 +19,7 @@
       "user_input": "Call.find(params[:id]).call_sid",
       "confidence": "Weak",
       "cwe_id": [22],
-      "note": "False positive. call_sid is validated by FILENAME_FORMAT regex (/A[A-Za-z0-9_-]{1,64}z/) before path construction in RecordingsController#show, and again at webhook entry in TelnyxController#verify_call_sid_format. Path is built from static Rails.root + regex-validated call_sid + literal .wav suffix - no traversal possible. Reviewed 2026-04-25."
+      "note": "False positive. call_sid is validated by FILENAME_FORMAT regex (filename-safe chars + colon/equals for Telnyx base64url, no slash) before path construction in RecordingsController#show, and again at webhook entry in TelnyxController#verify_call_sid_format. Path is built from static Rails.root + regex-validated call_sid + literal .wav suffix - no traversal possible. Reviewed 2026-04-25, regex relaxed 2026-04-29."
     }
   ],
   "updated": "2026-04-25 14:39:00 +0200",

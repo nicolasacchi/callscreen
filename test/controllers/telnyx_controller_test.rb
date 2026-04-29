@@ -86,6 +86,18 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_response :bad_request
   end
 
+  test "accepts realistic Telnyx CallSid (base64url with version prefix)" do
+    post telnyx_voice_url(token: @token),
+         params: {
+           CallSid: "v3:KsX_G3vERKRZc-b3Fwo9dGiEQ-7AfWmjXVKj98t3qGz-bspB7zZw==",
+           From: "+393339999999",
+           To: "+390999000355"
+         }
+    assert_response :success
+    assert_match(/<Gather/, @response.body)
+    assert Call.find_by(call_sid: "v3:KsX_G3vERKRZc-b3Fwo9dGiEQ-7AfWmjXVKj98t3qGz-bspB7zZw==")
+  end
+
   # === Voice action: routing ===
 
   test "voice on new caller creates contact + screening call and returns Gather TeXML" do

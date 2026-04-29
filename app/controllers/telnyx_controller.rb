@@ -1,5 +1,8 @@
 class TelnyxController < ApplicationController
-  CALL_SID_FORMAT = /\A[A-Za-z0-9_-]{1,64}\z/
+  # Telnyx call_control_id format is base64url + ":" version prefix, up to ~150 chars.
+  # Conservatively bound to filename-safe chars + 256 length; no "/" so path traversal
+  # is impossible regardless of what's downstream.
+  CALL_SID_FORMAT = /\A[A-Za-z0-9_:=\-]{1,256}\z/
 
   skip_before_action :verify_authenticity_token
   before_action :verify_telnyx_request

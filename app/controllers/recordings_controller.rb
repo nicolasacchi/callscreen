@@ -1,6 +1,8 @@
 class RecordingsController < ApplicationController
   RECORDINGS_ROOT = Rails.root.join("storage", "recordings")
-  FILENAME_FORMAT = /\A[A-Za-z0-9_-]{1,64}\z/
+  # Same character set as TelnyxController::CALL_SID_FORMAT; admin can only serve
+  # files whose name matches a Telnyx-shaped call_sid + literal .wav.
+  FILENAME_FORMAT = /\A[A-Za-z0-9_:=\-]{1,256}\z/
 
   before_action :authenticate_admin_user!
 
