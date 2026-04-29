@@ -126,6 +126,37 @@ Update env, restart, then update the Telnyx-side webhook URL in the dashboard (o
 
 ---
 
+## Greeting catalog & voices
+
+The greeting played at the start of every screened call is **selectable from the admin UI** (`/admin/settings`). Two settings drive it:
+
+- `greeting_variant` — one of 10 slugs in `app/models/greeting_catalog.rb` (`informal_tu`, `formal_lei`, `business_meeting`, `brief_lei`, `brief_tu`, `apologetic`, `direct`, `warm`, `email_first`, `bilingual_short`). Default: `informal_tu`. All variants share the same core message ("sono impegnato, ditemi di cosa avete bisogno…") plus the email `operator@example.com` written phonetically for clean TTS.
+- `greeting_voice` — one of `if_sara`, `im_nicola` (Kokoro Italian voices) or `alice`/`man`/`woman` (Telnyx built-in fallback).
+
+### Two-tier playback
+
+1. **Pre-rendered Kokoro audio** (preferred). When `storage/greetings/<slug>/<voice>.wav` exists, the app emits TeXML `<Play>` pointing at `https://APP_DOMAIN/greetings/<slug>/<voice>.wav` and Telnyx fetches the file. Studio-quality voices, no per-call cost.
+2. **Telnyx `<Say voice="alice">` fallback**. When the audio file is missing, the app falls back to Telnyx's built-in TTS using the variant's text. The system never hangs even if the operator hasn't pre-rendered yet.
+
+### One-time setup: install Kokoro and render audio
+
+Kokoro is a free, local TTS engine (no API key, ~2 GB for model + torch). Install once on the host, then run the render script after every catalog edit:
+
+```bash
+# inside the callscreen project
+python3 -m venv .venv
+source .venv/bin/activate
+pip install 'kokoro>=0.9.4' soundfile torch numpy
+
+bin/render_greetings                               # all 10 variants × default voices
+bin/render_greetings --voices if_sara              # only one voice
+bin/render_greetings --variants informal_tu --force  # re-render one variant
+```
+
+Output goes into `storage/greetings/<slug>/<voice>.wav` (24 kHz mono WAV). The mounted `storage/` volume in the deployed container picks the files up immediately — no restart needed.
+
+To add a new voice (e.g., `if_carlotta` if Kokoro adds it), append it to `Setting::ALLOWED_VOICES` in `app/models/setting.rb`, run `bin/render_greetings --voices if_carlotta`, restart.
+
 ## Data retention
 
 Two retention windows, both configured via the admin Settings page:

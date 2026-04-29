@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Render greeting audio files using Kokoro TTS.
+# Run this once after editing app/models/greeting_catalog.rb (or to add a new voice).
+# Output: storage/greetings/<slug>/<voice>.wav (24 kHz mono WAV, ~10-20 KB each).
+#
+# Requires Kokoro installed in the active Python:
+#   pip install 'kokoro>=0.9.4' soundfile torch numpy
+# Or use the meditation project's venv if you already set it up:
+#   cd ~/project/vibe/meditation && pip install -e '.[kokoro]'
+#
+# Usage:
+#   bin/render_greetings                                 # all variants × default voices
+#   bin/render_greetings --voices if_sara                # only one voice
+#   bin/render_greetings --variants informal_tu,direct   # only specific variants
+#   bin/render_greetings --force                         # re-render even if file exists
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec python3 "${SCRIPT_DIR}/../scripts/render_greetings.py" "$@"

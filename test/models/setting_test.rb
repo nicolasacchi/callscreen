@@ -2,8 +2,8 @@ require "test_helper"
 
 class SettingTest < ActiveSupport::TestCase
   test "get returns persisted value when set" do
-    Setting.set("greeting_voice", "Polly.Bianca")
-    assert_equal "Polly.Bianca", Setting.get("greeting_voice")
+    Setting.set("greeting_voice", "im_nicola")
+    assert_equal "im_nicola", Setting.get("greeting_voice")
   end
 
   test "get falls back to DEFAULTS when not persisted" do
@@ -21,13 +21,13 @@ class SettingTest < ActiveSupport::TestCase
 
   test "all_with_defaults returns DEFAULTS overlaid with stored values" do
     Setting.where(key: "spam_sensitivity").destroy_all
-    Setting.set("greeting_voice", "Polly.Carla")
+    Setting.set("greeting_voice", "im_nicola")
 
     list = Setting.all_with_defaults
     voice = list.find { |s| s.key == "greeting_voice" }
     sensitivity = list.find { |s| s.key == "spam_sensitivity" }
 
-    assert_equal "Polly.Carla", voice.value
+    assert_equal "im_nicola", voice.value
     assert_equal "0.5", sensitivity.value
     assert_equal Setting::DEFAULTS.size, list.size
   end
@@ -60,12 +60,22 @@ class SettingTest < ActiveSupport::TestCase
     assert_nothing_raised { Setting.set("greeting_language", "en-US") }
   end
 
-  test "set rejects greeting_voice with XML-attribute-injection characters" do
+  test "set rejects greeting_voice outside the allowlist" do
     assert_raises(Setting::InvalidValue) do
       Setting.set("greeting_voice", 'alice"><Hangup/><Say voice="alice')
     end
     assert_raises(Setting::InvalidValue) { Setting.set("greeting_voice", "<script>") }
-    assert_nothing_raised { Setting.set("greeting_voice", "Polly.Bianca-Neural") }
+    assert_raises(Setting::InvalidValue) { Setting.set("greeting_voice", "Polly.Carla") }
+    assert_nothing_raised { Setting.set("greeting_voice", "if_sara") }
+    assert_nothing_raised { Setting.set("greeting_voice", "im_nicola") }
+    assert_nothing_raised { Setting.set("greeting_voice", "alice") }
+  end
+
+  test "set rejects greeting_variant outside the catalog" do
+    assert_raises(Setting::InvalidValue) { Setting.set("greeting_variant", "fake_slug") }
+    assert_raises(Setting::InvalidValue) { Setting.set("greeting_variant", "") }
+    assert_nothing_raised { Setting.set("greeting_variant", "informal_tu") }
+    assert_nothing_raised { Setting.set("greeting_variant", "formal_lei") }
   end
 
   test "set rejects greeting_text longer than 500 chars" do

@@ -3,8 +3,9 @@ class Setting < ApplicationRecord
 
   DEFAULTS = {
     "greeting_text" => "Buongiorno. Questa chiamata potrebbe essere registrata. Chi parla e qual e' il motivo della chiamata?",
+    "greeting_variant" => "informal_tu",
     "greeting_language" => "it-IT",
-    "greeting_voice" => "alice",
+    "greeting_voice" => "if_sara",
     "voicemail_prompt" => "Per favore, lasci un messaggio dopo il segnale acustico.",
     "spam_sensitivity" => "0.5",
     "max_recording_seconds" => "120",
@@ -15,6 +16,7 @@ class Setting < ApplicationRecord
   }.freeze
 
   ALLOWED_TRANSCRIPTION_ENGINES = %w[Google Telnyx Azure Deepgram].freeze
+  ALLOWED_VOICES = %w[if_sara im_nicola alice man woman].freeze
 
   VALIDATORS = {
     "spam_sensitivity" => :validate_sensitivity,
@@ -25,6 +27,7 @@ class Setting < ApplicationRecord
     "greeting_voice" => :validate_voice,
     "screening_speech_timeout" => :validate_speech_timeout,
     "greeting_text" => :validate_text,
+    "greeting_variant" => :validate_greeting_variant,
     "voicemail_prompt" => :validate_text,
     "transcription_engine" => :validate_transcription_engine
   }.freeze
@@ -71,7 +74,11 @@ class Setting < ApplicationRecord
   end
 
   def self.validate_voice(v)
-    v.to_s.match?(/\A[A-Za-z][A-Za-z0-9._-]{0,63}\z/)
+    ALLOWED_VOICES.include?(v.to_s)
+  end
+
+  def self.validate_greeting_variant(v)
+    GreetingCatalog::SLUGS.include?(v.to_s)
   end
 
   def self.validate_speech_timeout(v)

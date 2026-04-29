@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Render the 10 greeting variants × N voices into storage/greetings/<slug>/<voice>.wav.
+
+Uses Kokoro TTS directly (the same engine the meditation project at
+upstream TTS project uses). Installation:
+
+    pip install 'kokoro>=0.9.4' soundfile torch
+
+Or, if you already have meditation's venv with the [kokoro] extra:
+
+    cd ~/project/vibe/meditation && pip install -e '.[kokoro]'
+
+Then run from the callscreen project root:
+
+    python3 scripts/render_greetings.py
+    python3 scripts/render_greetings.py --voices if_sara
+    python3 scripts/render_greetings.py --variants informal_tu,direct --force
+
+Output is 24 kHz mono WAV. Telnyx's <Play> verb accepts WAV directly.
+"""
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from pathlib import Path
+from typing import Iterable, NamedTuple
+
+CALLSCREEN_ROOT = Path(__file__).resolve().parent.parent
+CATALOG_FILE = CALLSCREEN_ROOT / "app" / "models" / "greeting_catalog.rb"
+OUTPUT_ROOT = CALLSCREEN_ROOT / "storage" / "greetings"
+SAMPLE_RATE = 24000
+
+DEFAULT_VOICES = ["if_sara", "im_nicola"]
+
+
+class Variant(NamedTuple):
+    slug: str
+    text: str
+
+
+def parse_catalog(path: Path) -> list[Variant]:
+    """Extract slug + text pairs from the Ruby greeting_catalog.rb file.
+
+    The catalog is plain Ruby with one Variant.new(...) per entry; we don't
+    need to parse Ruby fully — just pull out slug: and text: arguments
+    inside each Variant.new block.
+    """
+    src = path.read_text(encoding="utf-8")
+
+    # Resolve EMAIL_PHONETIC interpolation: anywhere we find #{EMAIL_PHONETIC}
+    # in a text: "...", swap it for the literal value defined at the top.
+    email_match = re.search(
+        r'EMAIL_PHONETIC\s*=\s*"([^"]+)"',
+        src,
+    )
+    if not email_match:
+        raise SystemExit("Could not find EMAIL_PHONETIC constant in catalog")
+    email = email_match.group(1)
+
+    variants: list[Variant] = []
+    # [\s\S]*? is lazy any-char incl. newlines — necessary because labels may
+    # contain parentheses, so [^)] won't work.
+    for block in re.finditer(
+        r'Variant\.new\(\s*slug:\s*"([^"]+)"[\s\S]*?text:\s*"((?:[^"\\]|\\.)*)"',
+        src,
+    ):
+        slug = block.group(1)
+        # Decode common Ruby string escapes
+        text = (
+            block.group(2)
+            .replace("\\n", "\n")
+            .replace('\\"', '"')
+            .replace("\\#", "#")
+            .replace("#{EMAIL_PHONETIC}", email)
+        )
+        variants.append(Variant(slug=slug, text=text))
+
+    if not variants:
+        raise SystemExit(f"No variants parsed from {path}")
+    return variants
+
+
+def lang_code_for_voice(voice: str) -> str:
+    """First letter of voice id encodes language: i=Italian, a=American, etc."""
+    return voice[0] if voice else "a"
+
+
+def render(variant: Variant, voice: str, force: bool) -> bool:
+    out_path = OUTPUT_ROOT / variant.slug / f"{voice}.wav"
+    if out_path.exists() and not force:
+        print(f"  ✓ {out_path.relative_to(CALLSCREEN_ROOT)} (exists)", file=sys.stderr)
+        return False
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        import numpy as np
+        import soundfile as sf
+        from kokoro import KPipeline
+    except ImportError as e:
+        raise SystemExit(
+            f"Missing dependency: {e}\n\n"
+            "Install Kokoro first:\n"
+            "  pip install 'kokoro>=0.9.4' soundfile torch numpy"
+        )
+
+    lang = lang_code_for_voice(voice)
+    pipeline = KPipeline(lang_code=lang)
+    voice_tensor = pipeline.load_voice(voice)
+
+    pieces: list = []
+    for _gs, _ps, audio in pipeline(variant.text, voice=voice_tensor, speed=1.0):
+        pieces.append(audio)
+    if not pieces:
+        raise RuntimeError(f"No audio generated for {variant.slug} / {voice}")
+
+    combined = np.concatenate(pieces)
+    sf.write(str(out_path), combined, SAMPLE_RATE)
+    print(
+        f"  → {out_path.relative_to(CALLSCREEN_ROOT)} "
+        f"({len(combined) / SAMPLE_RATE:.1f}s)",
+        file=sys.stderr,
+    )
+    return True
+
+
+def parse_csv(value: str | None, default: Iterable[str]) -> list[str]:
+    if not value:
+        return list(default)
+    return [v.strip() for v in value.split(",") if v.strip()]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--variants", help="Comma-separated slugs to render (default: all)")
+    parser.add_argument(
+        "--voices",
+        default=",".join(DEFAULT_VOICES),
+        help=f"Comma-separated voice ids (default: {','.join(DEFAULT_VOICES)})",
+    )
+    parser.add_argument("--force", action="store_true", help="Re-render even if file exists")
+    args = parser.parse_args()
+
+    catalog = parse_catalog(CATALOG_FILE)
+    catalog_by_slug = {v.slug: v for v in catalog}
+    requested_slugs = parse_csv(args.variants, [v.slug for v in catalog])
+    voices = parse_csv(args.voices, DEFAULT_VOICES)
+
+    unknown = [s for s in requested_slugs if s not in catalog_by_slug]
+    if unknown:
+        raise SystemExit(f"Unknown variants: {unknown}. Known: {list(catalog_by_slug)}")
+
+    rendered = 0
+    skipped = 0
+    print(f"Rendering {len(requested_slugs)} variants × {len(voices)} voices = "
+          f"{len(requested_slugs) * len(voices)} files into {OUTPUT_ROOT}", file=sys.stderr)
+    for slug in requested_slugs:
+        variant = catalog_by_slug[slug]
+        for voice in voices:
+            if render(variant, voice, force=args.force):
+                rendered += 1
+            else:
+                skipped += 1
+
+    print(f"\nDone: {rendered} rendered, {skipped} skipped (use --force to overwrite)",
+          file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -6,6 +6,20 @@
       <label for="settings_<%= setting.key %>"><%= setting.key.humanize %></label>
       <% if setting.key == "greeting_text" || setting.key == "voicemail_prompt" %>
         <textarea name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>"><%= setting.value %></textarea>
+      <% elsif setting.key == "greeting_variant" %>
+        <select name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>">
+          <% GreetingCatalog::VARIANTS.each do |variant| %>
+            <option value="<%= variant.slug %>" <%= "selected" if setting.value == variant.slug %>>
+              <%= variant.label %>
+            </option>
+          <% end %>
+        </select>
+        <% current = GreetingCatalog.find(setting.value) %>
+        <% if current %>
+          <small style="display: block; margin-top: 0.25rem; color: var(--text-muted);">
+            <%= current.text %>
+          </small>
+        <% end %>
       <% elsif setting.key == "greeting_language" %>
         <select name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>">
           <% [["Italian", "it-IT"], ["English", "en-US"], ["French", "fr-FR"], ["German", "de-DE"], ["Spanish", "es-ES"]].each do |label, val| %>
@@ -14,10 +28,16 @@
         </select>
       <% elsif setting.key == "greeting_voice" %>
         <select name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>">
-          <% %w[alice man woman].each do |v| %>
-            <option value="<%= v %>" <%= "selected" if setting.value == v %>><%= v.capitalize %></option>
+          <% Setting::ALLOWED_VOICES.each do |v| %>
+            <% rendered = (Rails.root.join("storage/greetings", Setting.get("greeting_variant").to_s, "#{v}.wav").exist?) %>
+            <option value="<%= v %>" <%= "selected" if setting.value == v %>>
+              <%= v %><%= rendered ? " ✓" : "" %>
+            </option>
           <% end %>
         </select>
+        <small style="display: block; margin-top: 0.25rem; color: var(--text-muted);">
+          ✓ = pre-rendered audio available for current variant; otherwise falls back to Say(alice).
+        </small>
       <% elsif setting.key == "transcription_engine" %>
         <select name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>">
           <% Setting::ALLOWED_TRANSCRIPTION_ENGINES.each do |v| %>

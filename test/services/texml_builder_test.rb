@@ -65,27 +65,47 @@ class TexmlBuilderTest < ActiveSupport::TestCase
     assert_not_nil REXML::XPath.first(doc, "//Reject")
   end
 
-  test "escapes < > & in text content" do
-    Setting.set("greeting_text", "Ciao <stranger> & friend")
-    xml = TexmlBuilder.greeting_and_gather(action_url: "https://example.test/screen")
+  test "escapes < > & in text content via record_voicemail prompt" do
+    Setting.set("voicemail_prompt", "Ciao <stranger> & friend")
+    xml = TexmlBuilder.record_voicemail(action_url: "https://example.test/recording")
     doc = REXML::Document.new(xml)
     say_text = REXML::XPath.first(doc, "//Say").text
     assert_equal "Ciao <stranger> & friend", say_text
   end
 
-  test "escapes double-quotes in attribute values (NEW H9 regression)" do
-    # Bypass Setting.set validation to simulate a corrupted-DB scenario.
-    # Even if the validator is bypassed, Nokogiri's attribute escaping must hold.
-    Setting.where(key: "greeting_voice").destroy_all
-    Setting.create!(key: "greeting_voice", value: 'alice"><Hangup/><Say voice="alice')
+  test "greeting_and_gather emits Play when pre-rendered audio exists" do
+    slug = Setting.get("greeting_variant")
+    voice = Setting.get("greeting_voice")
+    audio = Rails.root.join("storage/greetings", slug, "#{voice}.wav")
+    FileUtils.mkdir_p(audio.dirname)
+    File.binwrite(audio, "RIFF dummy wav data")
 
     xml = TexmlBuilder.greeting_and_gather(action_url: "https://example.test/screen")
     doc = REXML::Document.new(xml)
+    play = REXML::XPath.first(doc, "//Play")
+    assert_not_nil play
+    assert_match %r{/greetings/#{slug}/#{voice}\.wav\z}, play.text
+    # No Say should be emitted inside the Gather when Play is used
+    gather_say = REXML::XPath.first(doc, "//Gather/Say")
+    assert_nil gather_say
+  ensure
+    FileUtils.rm_f(audio) if audio
+  end
 
-    say = REXML::XPath.first(doc, "//Say")
-    assert_equal 'alice"><Hangup/><Say voice="alice', say.attribute("voice").value,
-                 "voice attribute must round-trip the literal string without breaking XML"
-    # The structural Hangup (after Gather) is intentional; assert exactly one.
-    assert_equal 1, REXML::XPath.match(doc, "//Hangup").size
+  test "greeting_and_gather falls back to Say when audio file is missing" do
+    slug = Setting.get("greeting_variant")
+    voice = Setting.get("greeting_voice")
+    audio = Rails.root.join("storage/greetings", slug, "#{voice}.wav")
+    FileUtils.rm_f(audio)
+
+    xml = TexmlBuilder.greeting_and_gather(action_url: "https://example.test/screen")
+    doc = REXML::Document.new(xml)
+    play = REXML::XPath.first(doc, "//Gather/Play")
+    say = REXML::XPath.first(doc, "//Gather/Say")
+
+    assert_nil play, "Should not emit Play when file is missing"
+    assert_not_nil say, "Should fall back to Say"
+    assert_equal GreetingCatalog.text_for(slug), say.text
+    assert_equal "alice", say.attribute("voice").value, "Fallback Say must use safe Telnyx voice"
   end
 end

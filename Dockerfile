@@ -69,7 +69,7 @@ RUN groupadd --system --gid 1000 rails && \
 COPY --chown=rails:rails --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --chown=rails:rails --from=build /rails /rails
 
-RUN mkdir -p /rails/storage/recordings && chown -R rails:rails /rails/storage
+RUN mkdir -p /rails/storage/recordings /rails/storage/greetings && chown -R rails:rails /rails/storage
 
 USER 1000:1000
 

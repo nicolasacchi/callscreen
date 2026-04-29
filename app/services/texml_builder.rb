@@ -5,7 +5,7 @@ class TexmlBuilder
     def greeting_and_gather(action_url:)
       language = Setting.get("greeting_language")
       voice = Setting.get("greeting_voice")
-      greeting = Setting.get("greeting_text")
+      slug = Setting.get("greeting_variant")
       speech_timeout = Setting.get("screening_speech_timeout")
       engine = Setting.get("transcription_engine")
 
@@ -19,9 +19,9 @@ class TexmlBuilder
           action: action_url,
           method: "POST"
         ) do
-          xml.Say(greeting, voice: voice, language: language)
+          render_greeting(xml, slug: slug, voice: voice, language: language)
         end
-        xml.Say("Non ho ricevuto risposta. Arrivederci.", voice: voice, language: language)
+        xml.Say("Non ho ricevuto risposta. Arrivederci.", voice: "alice", language: language)
         xml.Hangup
       end
     end
@@ -68,6 +68,27 @@ class TexmlBuilder
     end
 
     private
+
+    def render_greeting(xml, slug:, voice:, language:)
+      audio_path = greeting_audio_path(slug, voice)
+      if audio_path&.exist?
+        xml.Play(greeting_audio_url(slug, voice))
+      else
+        text = GreetingCatalog.text_for(slug) || Setting.get("greeting_text")
+        xml.Say(text, voice: "alice", language: language)
+      end
+    end
+
+    def greeting_audio_path(slug, voice)
+      return nil unless GreetingCatalog::SLUGS.include?(slug.to_s)
+      return nil unless Setting::ALLOWED_VOICES.include?(voice.to_s)
+      Rails.root.join("storage", "greetings", slug.to_s, "#{voice}.wav")
+    end
+
+    def greeting_audio_url(slug, voice)
+      app_domain = ENV.fetch("APP_DOMAIN", "https://phone.example.com")
+      "#{app_domain}/greetings/#{slug}/#{voice}.wav"
+    end
 
     def build_response
       builder = Nokogiri::XML::Builder.new(encoding: "UTF-8") do |xml|
