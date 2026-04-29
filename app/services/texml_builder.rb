@@ -9,7 +9,14 @@ class TexmlBuilder
       timeout = Setting.get("screening_speech_timeout")
 
       build_response do |xml|
-        xml.Gather(input: "speech", speechTimeout: timeout, language: language, action: action_url, method: "POST") do
+        xml.Gather(
+          input: "speech",
+          speechTimeout: timeout,
+          language: language,
+          transcriptionEngine: "Google",
+          action: action_url,
+          method: "POST"
+        ) do
           xml.Say(greeting, voice: voice, language: language)
         end
         xml.Say("Non ho ricevuto risposta. Arrivederci.", voice: voice, language: language)
