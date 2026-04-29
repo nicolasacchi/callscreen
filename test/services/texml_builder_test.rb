@@ -36,6 +36,15 @@ class TexmlBuilderTest < ActiveSupport::TestCase
     assert_not_nil REXML::XPath.first(doc, "//Record")
   end
 
+  test "record_voicemail Record sets recordingStatusCallback so hangups still deliver the recording" do
+    xml = TexmlBuilder.record_voicemail(action_url: "https://example.test/recording")
+    doc = REXML::Document.new(xml)
+    record = REXML::XPath.first(doc, "//Record")
+    assert_equal "https://example.test/recording", record.attribute("recordingStatusCallback").value,
+                 "Without recordingStatusCallback, hangup-during-recording skips the action callback"
+    assert_equal "5", record.attribute("timeout").value
+  end
+
   test "forward_call wraps the number in Dial" do
     xml = TexmlBuilder.forward_call("+390123456789")
     doc = REXML::Document.new(xml)

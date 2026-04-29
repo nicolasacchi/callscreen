@@ -34,7 +34,14 @@ class TexmlBuilder
 
       build_response do |xml|
         xml.Say(prompt, voice: voice, language: language)
-        xml.Record(maxLength: max_length, action: action_url, playBeep: "true", method: "POST")
+        xml.Record(
+          maxLength: max_length,
+          timeout: 5,
+          action: action_url,
+          recordingStatusCallback: action_url,
+          playBeep: "true",
+          method: "POST"
+        )
       end
     end
 

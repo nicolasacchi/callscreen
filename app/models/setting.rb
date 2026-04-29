@@ -8,7 +8,7 @@ class Setting < ApplicationRecord
     "voicemail_prompt" => "Per favore, lasci un messaggio dopo il segnale acustico.",
     "spam_sensitivity" => "0.5",
     "max_recording_seconds" => "120",
-    "screening_speech_timeout" => "auto",
+    "screening_speech_timeout" => "3",
     "auto_delete_days" => "30",
     "auto_delete_transcripts_days" => "30",
     "transcription_engine" => "Google"
