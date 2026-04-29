@@ -193,7 +193,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   test "screen with LLM spam classification hangs up" do
     call = calls(:screening)
-    stub_openrouter("spam", 0.95, "Robocall pattern detected")
+    stub_moonshot("spam", 0.95, "Robocall pattern detected")
 
     post telnyx_screen_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "Special offer for your phone bill" }
@@ -205,7 +205,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   test "screen with LLM legit classification records voicemail" do
     call = calls(:screening)
-    stub_openrouter("legit", 0.9, "Sounds like a real caller")
+    stub_moonshot("legit", 0.9, "Sounds like a real caller")
 
     post telnyx_screen_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "Sono Mario, chiamo per il tuo amico" }
@@ -216,7 +216,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   test "screen with LLM uncertain records voicemail" do
     call = calls(:screening)
-    stub_openrouter("uncertain", 0.3, "Garbled speech")
+    stub_moonshot("uncertain", 0.3, "Garbled speech")
 
     post telnyx_screen_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "uhm... ah... ciao?" }
@@ -228,7 +228,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
   test "screen below sensitivity threshold downgrades spam to uncertain" do
     Setting.set("spam_sensitivity", "0.9")
     call = calls(:screening)
-    stub_openrouter("spam", 0.6, "Slightly suspicious")
+    stub_moonshot("spam", 0.6, "Slightly suspicious")
 
     post telnyx_screen_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "Buongiorno" }
@@ -237,9 +237,9 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_equal "uncertain", call.reload.status
   end
 
-  test "screen handles HTTP error from OpenRouter gracefully" do
+  test "screen handles HTTP error from Moonshot gracefully" do
     call = calls(:screening)
-    stub_request(:post, "https://openrouter.ai/api/v1/chat/completions").to_return(status: 500, body: "boom")
+    stub_request(:post, "https://api.moonshot.ai/v1/chat/completions").to_return(status: 500, body: "boom")
 
     post telnyx_screen_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "ciao" }
@@ -288,11 +288,11 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   private
 
-  def stub_openrouter(classification, confidence, reason)
+  def stub_moonshot(classification, confidence, reason)
     body = {
       choices: [ { message: { content: { classification:, confidence:, reason: }.to_json } } ]
     }.to_json
-    stub_request(:post, "https://openrouter.ai/api/v1/chat/completions").to_return(
+    stub_request(:post, "https://api.moonshot.ai/v1/chat/completions").to_return(
       status: 200,
       body: body,
       headers: { "Content-Type" => "application/json" }

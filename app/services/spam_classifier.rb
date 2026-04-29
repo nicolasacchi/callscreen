@@ -1,5 +1,5 @@
 class SpamClassifier
-  ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+  ENDPOINT = "https://api.moonshot.ai/v1/chat/completions"
   MAX_TRANSCRIPT_LEN = 2000
   CONTROL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/
 
@@ -11,16 +11,18 @@ class SpamClassifier
   def classify
     response = HTTParty.post(ENDPOINT,
       headers: {
-        "Authorization" => "Bearer #{ENV['OPENROUTER_API_KEY']}",
+        "Authorization" => "Bearer #{ENV['MOONSHOT_API_KEY']}",
         "Content-Type" => "application/json",
-        "X-Title" => "AI Call Screener",
         "X-Request-ID" => Current.request_id.to_s
       },
       body: {
-        model: ENV.fetch("OPENROUTER_MODEL", "anthropic/claude-sonnet-4-20250514"),
+        model: ENV.fetch("MOONSHOT_MODEL", "kimi-k2.6"),
         messages: messages,
-        max_tokens: 200,
-        temperature: 0
+        # Kimi K2.6 is a reasoning model: it spends most tokens on internal CoT
+        # before emitting the final answer, so 200 max_tokens cuts off mid-thought.
+        # Also: K2.6 only accepts temperature=1; older Moonshot models accept 0.
+        max_tokens: 1024,
+        temperature: 1
       }.to_json,
       timeout: 15
     )

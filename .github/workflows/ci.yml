@@ -71,7 +71,8 @@ jobs:
       RAILS_ENV: test
       WEBHOOK_TOKEN: test-webhook-token
       APP_DOMAIN: https://callscreen.test
-      OPENROUTER_API_KEY: test-openrouter-key
+      MOONSHOT_API_KEY: test-moonshot-key
+      MOONSHOT_MODEL: kimi-k2.6
       TELNYX_API_KEY: test-telnyx-key
       WHISPER_API_URL: http://faster-whisper.test:8000
       NTFY_URL: http://ntfy.test/callscreen
