@@ -75,6 +75,13 @@ class TelnyxController < ApplicationController
     speech_result = params[:SpeechResult]
     call = Call.find_by!(call_sid: call_sid)
 
+    Rails.logger.info(
+      "[telnyx/screen] keys=#{params.keys.sort.inspect} " \
+      "speech_len=#{speech_result.to_s.length} " \
+      "confidence=#{params[:Confidence].inspect} " \
+      "speech_raw=#{speech_result.inspect}"
+    )
+
     call.update!(screening_transcript: speech_result)
 
     if speech_result.blank?
