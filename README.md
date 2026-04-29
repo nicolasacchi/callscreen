@@ -47,7 +47,7 @@ Inbound call → Telnyx → POST /telnyx/voice
 | `TELNYX_PUBLIC_KEY` | Base64-encoded raw 32-byte Ed25519 public key from your Telnyx account. Required for signed-webhook verification. |
 | `TELNYX_API_KEY` | Used to download recordings from `*.telnyx.com` |
 | `MOONSHOT_API_KEY` | Authentication for the Moonshot/Kimi LLM classifier |
-| `MOONSHOT_MODEL` | Model id, default `kimi-k2.6` (other options: `moonshot-v1-32k`, `kimi-k2.5`, etc.) |
+| `MOONSHOT_MODEL` | Model id, default `moonshot-v1-8k` (fast, non-reasoning; alternatives: `moonshot-v1-32k`, `kimi-k2.6` for reasoning) |
 | `WHISPER_API_URL` | Faster-whisper service base URL, default `http://faster-whisper:8000` |
 | `NTFY_URL` | Full ntfy topic URL for push notifications |
 | `NTFY_PRIORITY` | Optional, default `default` |

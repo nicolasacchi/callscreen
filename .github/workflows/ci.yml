@@ -72,7 +72,7 @@ jobs:
       WEBHOOK_TOKEN: test-webhook-token
       APP_DOMAIN: https://callscreen.test
       MOONSHOT_API_KEY: test-moonshot-key
-      MOONSHOT_MODEL: kimi-k2.6
+      MOONSHOT_MODEL: moonshot-v1-8k
       TELNYX_API_KEY: test-telnyx-key
       WHISPER_API_URL: http://faster-whisper.test:8000
       NTFY_URL: http://ntfy.test/callscreen

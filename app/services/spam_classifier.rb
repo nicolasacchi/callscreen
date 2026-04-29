@@ -16,17 +16,12 @@ class SpamClassifier
         "X-Request-ID" => Current.request_id.to_s
       },
       body: {
-        model: ENV.fetch("MOONSHOT_MODEL", "kimi-k2.6"),
+        model: ENV.fetch("MOONSHOT_MODEL", "moonshot-v1-8k"),
         messages: messages,
-        # Kimi K2.6 is a reasoning model: it spends most tokens on internal CoT
-        # before emitting the final answer, so 200 max_tokens cuts off mid-thought.
-        # Also: K2.6 only accepts temperature=1; older Moonshot models accept 0.
-        max_tokens: 1024,
-        temperature: 1
+        max_tokens: 200,
+        temperature: 0
       }.to_json,
-      # Reasoning models can take 10-25s end-to-end. Telnyx's outbound webhook
-      # timeout is ~30s; keep below that with margin so we always return TeXML.
-      timeout: 28
+      timeout: 15
     )
 
     return uncertain("HTTP #{response.code}") unless response.success?
