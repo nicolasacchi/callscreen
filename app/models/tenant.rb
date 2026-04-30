@@ -53,7 +53,7 @@ class Tenant < ApplicationRecord
   validate :screening_speech_timeout_valid
   validate :only_one_default_tenant
 
-  before_validation :default_forward_back_to_mobile
+  before_validation :default_forward_back_to_mobile, on: :create
 
   scope :active, -> { where(active: true) }
 

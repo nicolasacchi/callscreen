@@ -2,13 +2,14 @@ require "nokogiri"
 
 class TexmlBuilder
   class << self
-    def greeting_and_gather(action_url:)
-      language = Setting.get("greeting_language")
-      voice = Setting.get("greeting_voice")
-      slug = Setting.get("greeting_variant")
-      tone = Setting.get("greeting_tone")
-      speech_timeout = Setting.get("screening_speech_timeout")
-      engine = Setting.get("transcription_engine")
+    def greeting_and_gather(action_url:, tenant: nil)
+      tenant ||= Tenant.default
+      language = tenant&.greeting_language.presence || Setting.get("greeting_language")
+      voice    = tenant&.greeting_voice.presence    || Setting.get("greeting_voice")
+      slug     = tenant&.greeting_variant.presence  || Setting.get("greeting_variant")
+      tone     = tenant&.greeting_tone.presence     || Setting.get("greeting_tone")
+      speech_timeout = tenant&.screening_speech_timeout.presence || Setting.get("screening_speech_timeout")
+      engine   = Setting.get("transcription_engine")
 
       build_response do |xml|
         xml.Gather(
@@ -20,18 +21,19 @@ class TexmlBuilder
           action: action_url,
           method: "POST"
         ) do
-          render_greeting(xml, slug: slug, voice: voice, tone: tone, language: language)
+          render_greeting(xml, slug: slug, voice: voice, tone: tone, language: language, tenant: tenant)
         end
         render_system_phrase(xml, "no_answer", voice: voice, tone: tone, language: language)
         xml.Hangup
       end
     end
 
-    def record_voicemail(action_url:)
-      language = Setting.get("greeting_language")
-      voice = Setting.get("greeting_voice")
-      tone = Setting.get("greeting_tone")
-      max_length = Setting.get("max_recording_seconds")
+    def record_voicemail(action_url:, tenant: nil)
+      tenant ||= Tenant.default
+      language   = tenant&.greeting_language.presence || Setting.get("greeting_language")
+      voice      = tenant&.greeting_voice.presence    || Setting.get("greeting_voice")
+      tone       = tenant&.greeting_tone.presence     || Setting.get("greeting_tone")
+      max_length = tenant&.max_recording_seconds      || Setting.get("max_recording_seconds")
 
       build_response do |xml|
         render_system_phrase(xml, "voicemail_prompt", voice: voice, tone: tone, language: language)
@@ -59,10 +61,11 @@ class TexmlBuilder
     # Hangup with an optional pre-rendered system-phrase preface.
     #   phrase: a key in GreetingCatalog::SYSTEM_PHRASES (e.g. "goodbye_spam")
     # When phrase is nil, just emits <Hangup/>.
-    def hangup(phrase: nil)
-      language = Setting.get("greeting_language")
-      voice = Setting.get("greeting_voice")
-      tone = Setting.get("greeting_tone")
+    def hangup(phrase: nil, tenant: nil)
+      tenant ||= Tenant.default
+      language = tenant&.greeting_language.presence || Setting.get("greeting_language")
+      voice    = tenant&.greeting_voice.presence    || Setting.get("greeting_voice")
+      tone     = tenant&.greeting_tone.presence     || Setting.get("greeting_tone")
 
       build_response do |xml|
         render_system_phrase(xml, phrase, voice: voice, tone: tone, language: language) if phrase
@@ -79,12 +82,13 @@ class TexmlBuilder
     # One-shot follow-up Gather for ambiguous calls. Plays a pre-rendered
     # "please clarify" prompt in the same voice as the greeting, then
     # captures a second utterance via Gather.
-    def clarify_and_gather(action_url:)
-      language = Setting.get("greeting_language")
-      voice = Setting.get("greeting_voice")
-      tone = Setting.get("greeting_tone")
-      speech_timeout = Setting.get("screening_speech_timeout")
-      engine = Setting.get("transcription_engine")
+    def clarify_and_gather(action_url:, tenant: nil)
+      tenant ||= Tenant.default
+      language = tenant&.greeting_language.presence || Setting.get("greeting_language")
+      voice    = tenant&.greeting_voice.presence    || Setting.get("greeting_voice")
+      tone     = tenant&.greeting_tone.presence     || Setting.get("greeting_tone")
+      speech_timeout = tenant&.screening_speech_timeout.presence || Setting.get("screening_speech_timeout")
+      engine   = Setting.get("transcription_engine")
 
       build_response do |xml|
         xml.Gather(
@@ -125,12 +129,14 @@ class TexmlBuilder
       end
     end
 
-    def render_greeting(xml, slug:, voice:, tone:, language:)
+    def render_greeting(xml, slug:, voice:, tone:, language:, tenant: nil)
       audio_path = greeting_audio_path(slug, voice, tone)
       if audio_path&.exist?
         xml.Play(greeting_audio_url(slug, voice, tone))
       else
-        text = GreetingCatalog.text_for(slug) || Setting.get("greeting_text")
+        text = GreetingCatalog.text_for(slug) ||
+               tenant&.greeting_text.presence ||
+               Setting.get("greeting_text")
         xml.Say(text, voice: "alice", language: language)
       end
     end

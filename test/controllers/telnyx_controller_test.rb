@@ -3,7 +3,8 @@ require "test_helper"
 class TelnyxControllerTest < ActionDispatch::IntegrationTest
   setup do
     @token = ENV.fetch("WEBHOOK_TOKEN")
-    Setting.set("spam_sensitivity", "0.5")
+    @tenant = tenants(:default)
+    @tenant.update!(spam_sensitivity: 0.5, forward_back_number: nil, railsdav_username: "default")
   end
 
   # === Authentication ===
@@ -125,21 +126,20 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_equal "spam", Call.find_by!(call_sid: "block-call-001").status
   end
 
-  test "voice on whitelisted contact with FORWARD_NUMBER returns Dial TeXML" do
+  test "voice on whitelisted contact with tenant.forward_back_number returns Dial TeXML" do
     vip = contacts(:vip)
-    ENV["FORWARD_NUMBER"] = "+390987654321"
+    @tenant.update!(forward_back_number: "+390987654321")
     post telnyx_voice_url(token: @token),
          params: { CallSid: "vip-call-001", From: vip.phone, To: "+390123456789" }
     assert_response :success
     assert_match(/<Dial[^>]*>\+390987654321<\/Dial>/, @response.body)
     assert_match(/timeout="15"/, @response.body)
     assert_equal "legit", Call.find_by!(call_sid: "vip-call-001").status
-  ensure
-    ENV.delete("FORWARD_NUMBER")
   end
 
-  test "voice on whitelisted contact without FORWARD_NUMBER records voicemail" do
+  test "voice on whitelisted contact without forward_back_number records voicemail" do
     vip = contacts(:vip)
+    @tenant.update!(forward_back_number: nil)
     ENV.delete("FORWARD_NUMBER")
     post telnyx_voice_url(token: @token),
          params: { CallSid: "vip-vm-001", From: vip.phone, To: "+390123456789" }
@@ -229,7 +229,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "screen below sensitivity threshold also triggers clarification" do
-    Setting.set("spam_sensitivity", "0.9")
+    @tenant.update!(spam_sensitivity: 0.9)
     call = calls(:screening)
     stub_moonshot("spam", 0.6, "Slightly suspicious")
 
@@ -360,9 +360,9 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "voice with railsdav policy=allow forwards (or records) and skips screening" do
+    @tenant.update!(forward_back_number: "+390987654321")
     with_railsdav_env do
       stub_railsdav("+393335551111", policy: "allow", name: "Mama", addressbook: "Family")
-      ENV["FORWARD_NUMBER"] = "+390987654321"
       post telnyx_voice_url(token: @token),
            params: { CallSid: "rd-allow-1", From: "+393335551111", To: "+390123456789" }
       assert_response :success
@@ -371,8 +371,6 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
       call = Call.find_by!(call_sid: "rd-allow-1")
       assert_equal "legit", call.status
       assert_equal "Mama", call.contact.name
-    ensure
-      ENV.delete("FORWARD_NUMBER")
     end
   end
 
@@ -425,9 +423,9 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     ENV["RAILSDAV_API_TOKEN"] = prev_token
   end
 
-  def stub_railsdav(phone, policy:, name:, addressbook:)
+  def stub_railsdav(phone, policy:, name:, addressbook:, username: "default")
     stub_request(:get, "http://railsdav.test:3000/api/contact_lookup")
-      .with(query: { phone: phone })
+      .with(query: { phone: phone, username: username })
       .to_return(
         status: 200,
         body: { match: true, name: name, policy: policy, addressbook: addressbook, contact_id: 1 }.to_json,

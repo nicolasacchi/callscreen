@@ -18,7 +18,7 @@ class TelnyxController < ApplicationController
     # resolution via sip_headers["History-Info"].
     tenant = Tenant.default || raise("no default tenant configured")
 
-    external = RailsdavContactsClient.lookup(from)
+    external = RailsdavContactsClient.lookup(from, username: tenant.railsdav_username)
 
     contact = tenant.contacts.find_or_initialize_by(phone: from)
     contact.last_called_at = Time.current
@@ -53,7 +53,7 @@ class TelnyxController < ApplicationController
         return
       when "allow"
         call.update!(status: :legit)
-        forward_or_record(call)
+        forward_or_record(call, tenant)
         return
       end
     end
@@ -66,12 +66,12 @@ class TelnyxController < ApplicationController
 
     if contact.whitelisted?
       call.update!(status: :legit)
-      forward_or_record(call)
+      forward_or_record(call, tenant)
       return
     end
 
-    # Check rules against phone number
-    rule_match = Rule.active.find { |r| r.matches_number?(from) }
+    # Check rules against phone number — scoped to this tenant
+    rule_match = tenant.rules.active.find { |r| r.matches_number?(from) }
     if rule_match
       rule_match.increment!(:hit_count)
       if rule_match.action_block?
@@ -81,69 +81,69 @@ class TelnyxController < ApplicationController
         return
       elsif rule_match.action_allow?
         call.update!(status: :legit)
-        forward_or_record(call)
+        forward_or_record(call, tenant)
         return
       end
     end
 
     # Default: screen the call
     call.update!(status: :screening)
-    render_texml TexmlBuilder.greeting_and_gather(action_url: webhook_url(:screen))
+    render_texml TexmlBuilder.greeting_and_gather(action_url: webhook_url(:screen), tenant: tenant)
   end
 
   def screen
     call_sid = params[:CallSid]
     speech_result = params[:SpeechResult]
     call = Call.find_by!(call_sid: call_sid)
+    tenant = call.tenant
 
     call.update!(screening_transcript: speech_result)
 
     if speech_result.blank?
       call.update!(status: :spam)
       NotifyJob.perform_later(call.id)
-      render_texml TexmlBuilder.hangup(phrase: "goodbye_short")
+      render_texml TexmlBuilder.hangup(phrase: "goodbye_short", tenant: tenant)
       return
     end
 
-    # Check keyword rules against transcript
-    keyword_rule = Rule.active.keyword.find { |r| r.matches_transcript?(speech_result) }
+    # Check keyword rules against transcript — per-tenant
+    keyword_rule = tenant.rules.active.keyword.find { |r| r.matches_transcript?(speech_result) }
     if keyword_rule
       keyword_rule.increment!(:hit_count)
       if keyword_rule.action_block?
         call.update!(status: :spam, ai_classification: { "classification" => "spam", "confidence" => 1.0, "reason" => "Keyword rule: #{keyword_rule.value}" })
         NotifyJob.perform_later(call.id)
-        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam")
+        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam", tenant: tenant)
         return
       end
     end
 
-    # AI classification
-    result = SpamClassifier.new(speech_result, from_number: call.from_number).classify
+    # AI classification — per-tenant sensitivity
+    sensitivity = tenant.spam_sensitivity || Setting.get("spam_sensitivity").to_f
+    result = SpamClassifier.new(speech_result, from_number: call.from_number, sensitivity: sensitivity).classify
     call.update!(ai_classification: result)
-
-    sensitivity = Setting.get("spam_sensitivity").to_f
 
     case result["classification"]
     when "spam"
       if result["confidence"].to_f >= sensitivity
         call.update!(status: :spam)
         NotifyJob.perform_later(call.id)
-        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam")
+        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam", tenant: tenant)
       else
         # Low-confidence spam → ask one clarifying question before voicemail.
         call.update!(status: :uncertain)
-        render_texml TexmlBuilder.clarify_and_gather(action_url: webhook_url(:clarify))
+        render_texml TexmlBuilder.clarify_and_gather(action_url: webhook_url(:clarify), tenant: tenant)
       end
     when "legit"
       # Voicemail path: TranscribeRecordingJob will notify with the full message
       # once Whisper finishes. No early NotifyJob here — that produced duplicate
       # ntfy pushes per call.
       call.update!(status: :legit)
-      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
+      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording), tenant: tenant)
     else
       # Explicit uncertain → ask one clarifying question.
       call.update!(status: :uncertain)
-      render_texml TexmlBuilder.clarify_and_gather(action_url: webhook_url(:clarify))
+      render_texml TexmlBuilder.clarify_and_gather(action_url: webhook_url(:clarify), tenant: tenant)
     end
   end
 
@@ -154,6 +154,7 @@ class TelnyxController < ApplicationController
     call_sid = params[:CallSid]
     speech_result = params[:SpeechResult]
     call = Call.find_by!(call_sid: call_sid)
+    tenant = call.tenant
 
     combined = "#{call.screening_transcript}\n[Clarification]: #{speech_result}".strip
     call.update!(screening_transcript: combined)
@@ -161,13 +162,13 @@ class TelnyxController < ApplicationController
     if speech_result.blank?
       call.update!(status: :spam)
       NotifyJob.perform_later(call.id)
-      render_texml TexmlBuilder.hangup(phrase: "goodbye_short")
+      render_texml TexmlBuilder.hangup(phrase: "goodbye_short", tenant: tenant)
       return
     end
 
-    result = SpamClassifier.new(combined, from_number: call.from_number).classify
+    sensitivity = tenant.spam_sensitivity || Setting.get("spam_sensitivity").to_f
+    result = SpamClassifier.new(combined, from_number: call.from_number, sensitivity: sensitivity).classify
     call.update!(ai_classification: result)
-    sensitivity = Setting.get("spam_sensitivity").to_f
 
     # All voicemail paths defer notification to TranscribeRecordingJob so the
     # operator gets a SINGLE ntfy push per call with the full transcript.
@@ -178,17 +179,17 @@ class TelnyxController < ApplicationController
       if result["confidence"].to_f >= sensitivity
         call.update!(status: :spam)
         NotifyJob.perform_later(call.id)
-        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam")
+        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam", tenant: tenant)
       else
         call.update!(status: :uncertain)
-        render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
+        render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording), tenant: tenant)
       end
     when "legit"
       call.update!(status: :legit)
-      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
+      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording), tenant: tenant)
     else
       call.update!(status: :uncertain)
-      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
+      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording), tenant: tenant)
     end
   end
 
@@ -211,7 +212,7 @@ class TelnyxController < ApplicationController
       TranscribeRecordingJob.perform_later(call.id)
     end
 
-    render_texml TexmlBuilder.hangup
+    render_texml TexmlBuilder.hangup(tenant: call.tenant)
   end
 
   def status
@@ -262,13 +263,15 @@ class TelnyxController < ApplicationController
     head :bad_request unless params[:CallSid].to_s.match?(CALL_SID_FORMAT)
   end
 
-  def forward_or_record(call)
-    forward_number = ENV["FORWARD_NUMBER"]
+  def forward_or_record(call, tenant)
+    # Per-tenant forward-back number takes priority; fall back to the legacy
+    # FORWARD_NUMBER env so single-tenant installs keep working unchanged.
+    forward_number = tenant&.forward_back_number.presence || ENV["FORWARD_NUMBER"]
     if forward_number.present?
       render_texml TexmlBuilder.forward_call(forward_number)
     else
       call.update!(status: :recording)
-      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
+      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording), tenant: tenant)
     end
   end
 

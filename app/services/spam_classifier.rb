@@ -3,9 +3,10 @@ class SpamClassifier
   MAX_TRANSCRIPT_LEN = 2000
   CONTROL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/
 
-  def initialize(transcript, from_number:)
-    @transcript = transcript
+  def initialize(transcript, from_number:, sensitivity: nil)
+    @transcript  = transcript
     @from_number = from_number
+    @sensitivity = sensitivity
   end
 
   def classify
@@ -63,7 +64,7 @@ class SpamClassifier
   end
 
   def system_prompt
-    sensitivity = Setting.get("spam_sensitivity")
+    sensitivity = @sensitivity || Setting.get("spam_sensitivity") || 0.5
     <<~PROMPT
       You are a phone call spam classifier for an Italian phone number.
       You receive the transcript of what a caller said when asked to identify themselves and state their reason for calling.

@@ -7,24 +7,28 @@ class RailsdavContactsClient
   ALLOWED_POLICIES = %w[screen allow block].freeze
   MAX_STRING_LEN = 200
 
-  def self.lookup(phone)
-    new(phone).lookup
+  def self.lookup(phone, username: nil)
+    new(phone, username: username).lookup
   end
 
-  def initialize(phone)
-    @phone = phone.to_s
+  def initialize(phone, username: nil)
+    @phone    = phone.to_s
+    @username = username.to_s
   end
 
   def lookup
     return MISS if @phone.blank?
 
-    base = ENV["RAILSDAV_API_URL"].to_s.strip.chomp("/")
+    base  = ENV["RAILSDAV_API_URL"].to_s.strip.chomp("/")
     token = ENV["RAILSDAV_API_TOKEN"].to_s
     return MISS if base.blank? || token.blank?
 
+    query = { phone: @phone }
+    query[:username] = @username if @username.present?
+
     response = HTTParty.get(
       "#{base}/api/contact_lookup",
-      query: { phone: @phone },
+      query: query,
       headers: {
         "Authorization" => "Bearer #{token}",
         "Accept" => "application/json",
