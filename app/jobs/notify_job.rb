@@ -7,14 +7,14 @@ class NotifyJob < ApplicationJob
 
     if call.spam?
       NtfyNotifier.notify(
-        title: "Spam: #{call.from_number}",
+        title: "📵 Spam: #{call.from_number}",
         message: spam_message(call),
         priority: "low",
         tags: [ "no_entry", "spam" ]
       )
     else
       NtfyNotifier.notify(
-        title: "Call: #{call.contact_name}",
+        title: "📞 Da #{call.from_number}",
         message: legit_message(call),
         priority: "high",
         tags: [ "phone", call.status ]
@@ -27,17 +27,25 @@ class NotifyJob < ApplicationJob
   private
 
   def spam_message(call)
-    parts = [ "From: #{call.from_number}" ]
-    parts << "Reason: #{call.ai_reason}" if call.ai_reason
-    parts << "Said: #{call.screening_transcript}" if call.screening_transcript.present?
-    parts.join("\n")
+    parts = []
+    parts << "«#{call.screening_transcript.strip}»" if call.screening_transcript.present?
+    parts << ""
+    parts << "Motivo: #{call.ai_reason}" if call.ai_reason
+    parts << "Confidenza: #{(call.ai_confidence.to_f * 100).round}%" if call.ai_confidence
+    parts.join("\n").strip
   end
 
   def legit_message(call)
-    parts = [ "From: #{call.from_number}" ]
-    parts << "Contact: #{call.contact&.name}" if call.contact&.name.present?
-    parts << "Said: #{call.screening_transcript}" if call.screening_transcript.present?
-    parts << "Classification: #{call.ai_reason}" if call.ai_reason
-    parts.join("\n")
+    parts = []
+    parts << "Contatto: #{call.contact.name}" if call.contact&.name.present?
+    parts << "«#{call.screening_transcript.strip}»" if call.screening_transcript.present?
+    parts << ""
+    parts << "Classificazione: #{call.status}#{ai_confidence_suffix(call)}"
+    parts.join("\n").strip
+  end
+
+  def ai_confidence_suffix(call)
+    return "" unless call.ai_confidence
+    " (#{(call.ai_confidence.to_f * 100).round}%)"
   end
 end

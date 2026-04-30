@@ -13,7 +13,7 @@ class NotifyJobTest < ActiveJob::TestCase
     NotifyJob.new.perform(call.id)
 
     assert_requested :post, @ntfy_url, times: 1 do |req|
-      req.headers["Title"].to_s.start_with?("Spam:")
+      req.headers["Title"].to_s.include?("Spam")
     end
     assert_not_nil call.reload.notified_at
   end
@@ -25,7 +25,7 @@ class NotifyJobTest < ActiveJob::TestCase
     NotifyJob.new.perform(call.id)
 
     assert_requested :post, @ntfy_url, times: 1 do |req|
-      req.headers["Title"].to_s.start_with?("Call:") &&
+      req.headers["Title"].to_s.include?(call.from_number) &&
         req.headers["Priority"].to_s == "high"
     end
   end

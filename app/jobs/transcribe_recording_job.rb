@@ -32,13 +32,17 @@ class TranscribeRecordingJob < ApplicationJob
       status: :completed
     )
 
-    NtfyNotifier.notify(
-      title: "Voicemail: #{call.contact_name}",
-      message: build_message(call, transcript),
-      priority: "high",
-      tags: [ "phone", "voicemail" ]
-    )
-    call.update!(notified_at: Time.current)
+    # Skip ntfy push if the call was already notified (e.g. by NotifyJob for
+    # the spam-confirmed path, or a duplicate run of this job).
+    unless call.notified_at?
+      NtfyNotifier.notify(
+        title: notification_title(call),
+        message: build_message(call, transcript),
+        priority: "high",
+        tags: [ "phone", call.status.to_s ]
+      )
+      call.update!(notified_at: Time.current)
+    end
   rescue => e
     Rails.logger.error("TranscribeRecordingJob failed for call #{call_id} (#{e.class.name})")
     call&.update!(status: :failed)
@@ -80,17 +84,30 @@ class TranscribeRecordingJob < ApplicationJob
     expanded
   end
 
+  def notification_title(call)
+    duration = call.duration_seconds.to_i
+    suffix = duration.positive? ? " (#{duration}s)" : ""
+    "📞 Da #{call.from_number}#{suffix}"
+  end
+
   def build_message(call, transcript)
     parts = []
-    parts << "From: #{call.from_number}"
-    parts << "Contact: #{call.contact&.name}" if call.contact&.name.present?
-    parts << "Duration: #{call.duration_seconds}s" if call.duration_seconds
-    parts << ""
-    if call.screening_transcript.present?
-      parts << "Screening: #{call.screening_transcript}"
-      parts << ""
+    if transcript.present?
+      parts << "Messaggio: «#{transcript.strip}»"
+    else
+      parts << "Messaggio: [trascrizione non disponibile]"
     end
-    parts << "Message: #{transcript || '[transcription failed]'}"
-    parts.join("\n")
+    if call.screening_transcript.present?
+      parts << ""
+      cleaned = call.screening_transcript.strip.gsub(/\n?\[Clarification\]:\s*/, " — ")
+      parts << "Detto: «#{cleaned}»"
+    end
+    if call.ai_classification.present?
+      conf = call.ai_confidence
+      suffix = conf ? " (#{(conf.to_f * 100).round}%)" : ""
+      parts << ""
+      parts << "Classificazione: #{call.status}#{suffix}"
+    end
+    parts.join("\n").strip
   end
 end

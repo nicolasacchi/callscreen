@@ -114,8 +114,10 @@ class TelnyxController < ApplicationController
         render_texml TexmlBuilder.clarify_and_gather(action_url: webhook_url(:clarify))
       end
     when "legit"
+      # Voicemail path: TranscribeRecordingJob will notify with the full message
+      # once Whisper finishes. No early NotifyJob here — that produced duplicate
+      # ntfy pushes per call.
       call.update!(status: :legit)
-      NotifyJob.perform_later(call.id)
       render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
     else
       # Explicit uncertain → ask one clarifying question.
@@ -146,6 +148,10 @@ class TelnyxController < ApplicationController
     call.update!(ai_classification: result)
     sensitivity = Setting.get("spam_sensitivity").to_f
 
+    # All voicemail paths defer notification to TranscribeRecordingJob so the
+    # operator gets a SINGLE ntfy push per call with the full transcript.
+    # Only the high-confidence-spam hangup path notifies here, because there's
+    # no recording follow-up for it.
     case result["classification"]
     when "spam"
       if result["confidence"].to_f >= sensitivity
@@ -154,16 +160,13 @@ class TelnyxController < ApplicationController
         render_texml TexmlBuilder.hangup(phrase: "goodbye_spam")
       else
         call.update!(status: :uncertain)
-        NotifyJob.perform_later(call.id)
         render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
       end
     when "legit"
       call.update!(status: :legit)
-      NotifyJob.perform_later(call.id)
       render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
     else
       call.update!(status: :uncertain)
-      NotifyJob.perform_later(call.id)
       render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
     end
   end
@@ -174,13 +177,18 @@ class TelnyxController < ApplicationController
     recording_duration = params[:RecordingDuration]
 
     call = Call.find_by!(call_sid: call_sid)
-    call.update!(
-      recording_url: recording_url,
-      duration_seconds: recording_duration.to_i,
-      status: :completed
-    )
 
-    TranscribeRecordingJob.perform_later(call.id)
+    # <Record> action and recordingStatusCallback both fire to /telnyx/recording
+    # for the same recording. Dedupe by remembering whether we've already
+    # processed this call's recording — first webhook wins, second is a no-op.
+    if call.recording_url.blank?
+      call.update!(
+        recording_url: recording_url,
+        duration_seconds: recording_duration.to_i,
+        status: :completed
+      )
+      TranscribeRecordingJob.perform_later(call.id)
+    end
 
     render_texml TexmlBuilder.hangup
   end
