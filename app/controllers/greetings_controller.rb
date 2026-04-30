@@ -15,7 +15,7 @@ class GreetingsController < ApplicationController
     return head :not_found unless slug.match?(SLUG_FORMAT)
     return head :not_found unless voice.match?(VOICE_FORMAT)
     return head :not_found unless tone.match?(TONE_FORMAT)
-    return head :not_found unless GreetingCatalog::SLUGS.include?(slug)
+    return head :not_found unless GreetingCatalog::ALL_SLUGS.include?(slug)
     return head :not_found unless Setting::ALLOWED_VOICES.include?(voice)
     return head :not_found unless GreetingCatalog::TONE_SLUGS.include?(tone)
 

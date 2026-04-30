@@ -60,6 +60,14 @@ class GreetingCatalog
 
   SLUGS = VARIANTS.map(&:slug).freeze
 
+  # System phrases — internal use, not selectable from the admin UI.
+  # Pre-rendered alongside variants under storage/greetings/<slug>/<voice>/<tone>.wav.
+  SYSTEM_PHRASES = {
+    "clarify" => "Scusa, non ho capito bene. Per favore, dimmi più precisamente di cosa hai bisogno e perché stai chiamando."
+  }.freeze
+
+  ALL_SLUGS = (SLUGS + SYSTEM_PHRASES.keys).freeze
+
   # === Voices (who is speaking) ===
   # Each value is a label that describes WHAT the voice is, not a person's name.
   VOICES = {

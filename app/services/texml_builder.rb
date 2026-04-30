@@ -68,7 +68,47 @@ class TexmlBuilder
       end
     end
 
+    # One-shot follow-up Gather for ambiguous calls. Plays a pre-rendered
+    # "please clarify" prompt in the same voice as the greeting, then
+    # captures a second utterance via Gather.
+    def clarify_and_gather(action_url:)
+      language = Setting.get("greeting_language")
+      voice = Setting.get("greeting_voice")
+      tone = Setting.get("greeting_tone")
+      speech_timeout = Setting.get("screening_speech_timeout")
+      engine = Setting.get("transcription_engine")
+
+      build_response do |xml|
+        xml.Gather(
+          input: "speech",
+          timeout: 10,
+          speechTimeout: speech_timeout,
+          language: language,
+          transcriptionEngine: engine,
+          action: action_url,
+          method: "POST"
+        ) do
+          render_clarification(xml, voice: voice, tone: tone, language: language)
+        end
+        xml.Say("Non ho ricevuto risposta. Arrivederci.", voice: "alice", language: language)
+        xml.Hangup
+      end
+    end
+
     private
+
+    def render_clarification(xml, voice:, tone:, language:)
+      audio_path = greeting_audio_path("clarify", voice, tone)
+      if audio_path&.exist?
+        xml.Play(greeting_audio_url("clarify", voice, tone))
+      else
+        xml.Say(
+          GreetingCatalog::SYSTEM_PHRASES["clarify"],
+          voice: "alice",
+          language: language
+        )
+      end
+    end
 
     def render_greeting(xml, slug:, voice:, tone:, language:)
       audio_path = greeting_audio_path(slug, voice, tone)
@@ -81,7 +121,7 @@ class TexmlBuilder
     end
 
     def greeting_audio_path(slug, voice, tone)
-      return nil unless GreetingCatalog::SLUGS.include?(slug.to_s)
+      return nil unless GreetingCatalog::ALL_SLUGS.include?(slug.to_s)
       return nil unless Setting::ALLOWED_VOICES.include?(voice.to_s)
       return nil unless GreetingCatalog::TONE_SLUGS.include?(tone.to_s)
       Rails.root.join("storage", "greetings", slug.to_s, voice.to_s, "#{tone}.wav")

@@ -6,7 +6,7 @@ class Setting < ApplicationRecord
     "greeting_variant" => "informal_tu",
     "greeting_tone" => "natural",
     "greeting_language" => "it-IT",
-    "greeting_voice" => "if_sara",
+    "greeting_voice" => "im_nicola",
     "voicemail_prompt" => "Per favore, lasci un messaggio dopo il segnale acustico.",
     "spam_sensitivity" => "0.5",
     "max_recording_seconds" => "120",

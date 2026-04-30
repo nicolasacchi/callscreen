@@ -93,6 +93,38 @@ class TexmlBuilderTest < ActiveSupport::TestCase
     FileUtils.rm_f(audio) if audio
   end
 
+  test "clarify_and_gather emits Play when clarify audio exists" do
+    voice = Setting.get("greeting_voice")
+    tone = Setting.get("greeting_tone")
+    audio = Rails.root.join("storage/greetings/clarify", voice, "#{tone}.wav")
+    FileUtils.mkdir_p(audio.dirname)
+    File.binwrite(audio, "RIFF clarify dummy")
+
+    xml = TexmlBuilder.clarify_and_gather(action_url: "https://example.test/clarify")
+    doc = REXML::Document.new(xml)
+    play = REXML::XPath.first(doc, "//Play")
+    assert_not_nil play
+    assert_match %r{/greetings/clarify/#{voice}/#{tone}\.wav\z}, play.text
+    gather = REXML::XPath.first(doc, "//Gather")
+    assert_equal "https://example.test/clarify", gather.attribute("action").value
+  ensure
+    FileUtils.rm_f(audio) if audio
+  end
+
+  test "clarify_and_gather falls back to Say with the system phrase when audio missing" do
+    voice = Setting.get("greeting_voice")
+    tone = Setting.get("greeting_tone")
+    audio = Rails.root.join("storage/greetings/clarify", voice, "#{tone}.wav")
+    FileUtils.rm_f(audio)
+
+    xml = TexmlBuilder.clarify_and_gather(action_url: "https://example.test/clarify")
+    doc = REXML::Document.new(xml)
+    say = REXML::XPath.first(doc, "//Gather/Say")
+    assert_not_nil say
+    assert_equal GreetingCatalog::SYSTEM_PHRASES["clarify"], say.text
+    assert_equal "alice", say.attribute("voice").value
+  end
+
   test "greeting_and_gather falls back to Say when audio file is missing" do
     slug = Setting.get("greeting_variant")
     voice = Setting.get("greeting_voice")

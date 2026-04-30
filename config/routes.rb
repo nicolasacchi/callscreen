@@ -4,6 +4,7 @@ Rails.application.routes.draw do
   # Telnyx TeXML webhooks (token auth, no CSRF)
   post "telnyx/voice",     to: "telnyx#voice"
   post "telnyx/screen",    to: "telnyx#screen"
+  post "telnyx/clarify",   to: "telnyx#clarify"
   post "telnyx/recording", to: "telnyx#recording"
   post "telnyx/status",    to: "telnyx#status"
 

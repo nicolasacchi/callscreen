@@ -109,7 +109,50 @@ class TelnyxController < ApplicationController
         NotifyJob.perform_later(call.id)
         render_texml TexmlBuilder.hangup(message: "Grazie per aver chiamato. Arrivederci.")
       else
-        # Below sensitivity threshold — treat as uncertain
+        # Low-confidence spam → ask one clarifying question before voicemail.
+        call.update!(status: :uncertain)
+        render_texml TexmlBuilder.clarify_and_gather(action_url: webhook_url(:clarify))
+      end
+    when "legit"
+      call.update!(status: :legit)
+      NotifyJob.perform_later(call.id)
+      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
+    else
+      # Explicit uncertain → ask one clarifying question.
+      call.update!(status: :uncertain)
+      render_texml TexmlBuilder.clarify_and_gather(action_url: webhook_url(:clarify))
+    end
+  end
+
+  # Second-turn handler invoked after clarify_and_gather. We re-classify
+  # using both the original screening transcript and the caller's response
+  # to the clarification prompt, then route definitively.
+  def clarify
+    call_sid = params[:CallSid]
+    speech_result = params[:SpeechResult]
+    call = Call.find_by!(call_sid: call_sid)
+
+    combined = "#{call.screening_transcript}\n[Clarification]: #{speech_result}".strip
+    call.update!(screening_transcript: combined)
+
+    if speech_result.blank?
+      call.update!(status: :spam)
+      NotifyJob.perform_later(call.id)
+      render_texml TexmlBuilder.hangup(message: "Arrivederci.")
+      return
+    end
+
+    result = SpamClassifier.new(combined, from_number: call.from_number).classify
+    call.update!(ai_classification: result)
+    sensitivity = Setting.get("spam_sensitivity").to_f
+
+    case result["classification"]
+    when "spam"
+      if result["confidence"].to_f >= sensitivity
+        call.update!(status: :spam)
+        NotifyJob.perform_later(call.id)
+        render_texml TexmlBuilder.hangup(message: "Grazie per aver chiamato. Arrivederci.")
+      else
         call.update!(status: :uncertain)
         NotifyJob.perform_later(call.id)
         render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))

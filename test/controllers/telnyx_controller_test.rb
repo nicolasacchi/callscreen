@@ -214,24 +214,77 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_equal "legit", call.reload.status
   end
 
-  test "screen with LLM uncertain records voicemail" do
+  test "screen with LLM uncertain triggers clarification Gather (one-shot)" do
     call = calls(:screening)
     stub_moonshot("uncertain", 0.3, "Garbled speech")
 
     post telnyx_screen_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "uhm... ah... ciao?" }
     assert_response :success
-    assert_match(/<Record/, @response.body)
+    assert_match(/<Gather/, @response.body)
+    assert_match(/\/telnyx\/clarify/, @response.body)
+    assert_no_match(/<Record/, @response.body)
     assert_equal "uncertain", call.reload.status
   end
 
-  test "screen below sensitivity threshold downgrades spam to uncertain" do
+  test "screen below sensitivity threshold also triggers clarification" do
     Setting.set("spam_sensitivity", "0.9")
     call = calls(:screening)
     stub_moonshot("spam", 0.6, "Slightly suspicious")
 
     post telnyx_screen_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "Buongiorno" }
+    assert_response :success
+    assert_match(/<Gather/, @response.body)
+    assert_match(/\/telnyx\/clarify/, @response.body)
+    assert_equal "uncertain", call.reload.status
+  end
+
+  # === Clarify (second turn) ===
+
+  test "clarify with empty SpeechResult marks spam and hangs up" do
+    call = calls(:screening)
+    call.update!(screening_transcript: "uhm")
+
+    post telnyx_clarify_url(token: @token),
+         params: { CallSid: call.call_sid, SpeechResult: "" }
+    assert_response :success
+    assert_match(/<Hangup\/>/, @response.body)
+    assert_equal "spam", call.reload.status
+  end
+
+  test "clarify with legit follow-up records voicemail" do
+    call = calls(:screening)
+    call.update!(screening_transcript: "uhm")
+    stub_moonshot("legit", 0.9, "Personal acquaintance")
+
+    post telnyx_clarify_url(token: @token),
+         params: { CallSid: call.call_sid, SpeechResult: "Ciao sono Marco, ti chiamo per il libro" }
+    assert_response :success
+    assert_match(/<Record/, @response.body)
+    assert_equal "legit", call.reload.status
+    assert_includes call.reload.screening_transcript, "[Clarification]:"
+  end
+
+  test "clarify with high-confidence spam follow-up hangs up" do
+    call = calls(:screening)
+    call.update!(screening_transcript: "Buongiorno")
+    stub_moonshot("spam", 0.95, "Telemarketing")
+
+    post telnyx_clarify_url(token: @token),
+         params: { CallSid: call.call_sid, SpeechResult: "offerta sul gas e luce" }
+    assert_response :success
+    assert_match(/<Hangup\/>/, @response.body)
+    assert_equal "spam", call.reload.status
+  end
+
+  test "clarify with persistent uncertain falls through to voicemail" do
+    call = calls(:screening)
+    call.update!(screening_transcript: "uhm")
+    stub_moonshot("uncertain", 0.2, "Still unclear")
+
+    post telnyx_clarify_url(token: @token),
+         params: { CallSid: call.call_sid, SpeechResult: "ah, eh" }
     assert_response :success
     assert_match(/<Record/, @response.body)
     assert_equal "uncertain", call.reload.status
@@ -244,8 +297,9 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     post telnyx_screen_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "ciao" }
     assert_response :success
-    # Falls through to uncertain → voicemail recording
-    assert_match(/<Record/, @response.body)
+    # Falls through to uncertain → clarification Gather (one-shot)
+    assert_match(/<Gather/, @response.body)
+    assert_match(/\/telnyx\/clarify/, @response.body)
   end
 
   # === Recording action ===

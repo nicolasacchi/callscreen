@@ -56,4 +56,16 @@ class GreetingCatalogTest < ActiveSupport::TestCase
   test "default greeting_variant in Setting::DEFAULTS exists in the catalog" do
     assert GreetingCatalog::SLUGS.include?(Setting::DEFAULTS["greeting_variant"])
   end
+
+  test "SYSTEM_PHRASES has at least the clarify phrase" do
+    assert GreetingCatalog::SYSTEM_PHRASES.key?("clarify")
+    assert GreetingCatalog::SYSTEM_PHRASES["clarify"].include?("non ho capito")
+  end
+
+  test "ALL_SLUGS combines variants and system phrases" do
+    assert_includes GreetingCatalog::ALL_SLUGS, "informal_tu"
+    assert_includes GreetingCatalog::ALL_SLUGS, "clarify"
+    assert_equal GreetingCatalog::SLUGS.size + GreetingCatalog::SYSTEM_PHRASES.size,
+                 GreetingCatalog::ALL_SLUGS.size
+  end
 end

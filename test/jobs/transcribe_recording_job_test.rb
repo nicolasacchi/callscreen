@@ -30,7 +30,7 @@ class TranscribeRecordingJobTest < ActiveJob::TestCase
     FileUtils.rm_f(expected_path) if defined?(expected_path) && expected_path
   end
 
-  test "rejects non-Telnyx recording URL host (SSRF guard)" do
+  test "rejects untrusted recording URL host (SSRF guard)" do
     @call.update!(recording_url: "https://attacker.example.com/leak")
     stub_request(:post, @ntfy_url).to_return(status: 200, body: "")
 
@@ -44,16 +44,62 @@ class TranscribeRecordingJobTest < ActiveJob::TestCase
     assert_not_requested :get, "https://attacker.example.com/leak"
   end
 
-  test "does NOT send TELNYX_API_KEY to non-Telnyx hosts" do
-    @call.update!(recording_url: "https://attacker.example.com/leak")
+  test "accepts Telnyx's S3 recording URLs" do
+    s3_url = "https://s3.amazonaws.com/telephony-recorder-prod/abc/recording.mp3?X-Amz-Signature=xyz"
+    @call.update!(recording_url: s3_url)
+    stub_request(:get, s3_url).to_return(status: 200, body: "FAKE_WAV")
+    stub_request(:post, @whisper_url).to_return(status: 200, body: { text: "ciao" }.to_json)
     stub_request(:post, @ntfy_url).to_return(status: 200, body: "")
 
-    assert_raises(StandardError) do
-      TranscribeRecordingJob.new.perform(@call.id)
+    perform_enqueued_jobs do
+      TranscribeRecordingJob.perform_later(@call.id)
     end
-    # The host check raises BEFORE any HTTP call is made
-    assert_not_requested :get, "https://attacker.example.com/leak",
-                         headers: { "Authorization" => "Bearer #{ENV['TELNYX_API_KEY']}" }
+
+    @call.reload
+    assert_equal "completed", @call.status
+    assert_equal "ciao", @call.voicemail_transcript
+  ensure
+    expected = Rails.root.join("storage/recordings/#{@call.call_sid}.wav").to_s
+    FileUtils.rm_f(expected)
+  end
+
+  test "does NOT send TELNYX_API_KEY to S3 hosts (auth leakage guard)" do
+    s3_url = "https://telephony-recorder-prod.s3.amazonaws.com/abc/recording.mp3?X-Amz-Signature=xyz"
+    @call.update!(recording_url: s3_url)
+    stub_request(:get, s3_url).to_return(status: 200, body: "FAKE_WAV")
+    stub_request(:post, @whisper_url).to_return(status: 200, body: { text: "x" }.to_json)
+    stub_request(:post, @ntfy_url).to_return(status: 200, body: "")
+
+    perform_enqueued_jobs do
+      TranscribeRecordingJob.perform_later(@call.id)
+    end
+
+    # Authorization header must NOT contain the Telnyx key when fetching S3
+    assert_requested :get, s3_url do |req|
+      !req.headers.key?("Authorization") ||
+        !req.headers["Authorization"].include?(ENV["TELNYX_API_KEY"])
+    end
+  ensure
+    expected = Rails.root.join("storage/recordings/#{@call.call_sid}.wav").to_s
+    FileUtils.rm_f(expected)
+  end
+
+  test "DOES send TELNYX_API_KEY to telnyx.com hosts" do
+    telnyx_url = "https://api.telnyx.com/v2/recordings/abc/download.wav"
+    @call.update!(recording_url: telnyx_url)
+    stub_request(:get, telnyx_url).to_return(status: 200, body: "FAKE_WAV")
+    stub_request(:post, @whisper_url).to_return(status: 200, body: { text: "x" }.to_json)
+    stub_request(:post, @ntfy_url).to_return(status: 200, body: "")
+
+    perform_enqueued_jobs do
+      TranscribeRecordingJob.perform_later(@call.id)
+    end
+
+    assert_requested :get, telnyx_url,
+                     headers: { "Authorization" => "Bearer #{ENV['TELNYX_API_KEY']}" }
+  ensure
+    expected = Rails.root.join("storage/recordings/#{@call.call_sid}.wav").to_s
+    FileUtils.rm_f(expected)
   end
 
   test "Whisper failure leaves call status :failed and pushes ntfy warning" do

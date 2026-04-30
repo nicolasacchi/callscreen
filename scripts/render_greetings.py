@@ -39,6 +39,12 @@ DEFAULT_TONES = {
     "slow": 0.85,
 }
 
+# Internal/system phrases rendered alongside the user-selectable variants.
+# Keep in sync with GreetingCatalog::SYSTEM_PHRASES on the Ruby side.
+SYSTEM_PHRASES = {
+    "clarify": "Scusa, non ho capito bene. Per favore, dimmi più precisamente di cosa hai bisogno e perché stai chiamando.",
+}
+
 
 class Variant(NamedTuple):
     slug: str
@@ -156,8 +162,12 @@ def main() -> int:
     args = parser.parse_args()
 
     catalog = parse_catalog(CATALOG_FILE)
+    # Append system phrases as additional Variants — same render path,
+    # but they're internal and don't appear in the admin UI catalog.
+    catalog = catalog + [Variant(slug=slug, text=text) for slug, text in SYSTEM_PHRASES.items()]
     catalog_by_slug = {v.slug: v for v in catalog}
-    requested_slugs = parse_csv(args.variants, [v.slug for v in catalog])
+    default_slugs = [v.slug for v in catalog]
+    requested_slugs = parse_csv(args.variants, default_slugs)
     voices = parse_csv(args.voices, DEFAULT_VOICES)
     tones = parse_csv(args.tones, list(DEFAULT_TONES.keys()))
 
