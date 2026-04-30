@@ -52,6 +52,8 @@ Inbound call → Telnyx → POST /telnyx/voice
 | `NTFY_URL` | Full ntfy topic URL for push notifications |
 | `NTFY_PRIORITY` | Optional, default `default` |
 | `FORWARD_NUMBER` | Optional E.164 number to dial for whitelisted callers |
+| `RAILSDAV_API_URL` | Optional. Base URL of the railsdav-app contacts service (e.g. `http://railsdav:3000`). When set together with `RAILSDAV_API_TOKEN`, inbound calls from contacts found there are auto-allowed/blocked according to the per-contact / per-addressbook policy in railsdav. Lookup fails open: if railsdav is unreachable, calls proceed through the normal screening pipeline. On the railsdav side you must also set `CALLSCREEN_API_TOKEN` (same value) **and** `CALLSCREEN_API_USERNAME` (the railsdav username/email whose addressbooks should be consulted). |
+| `RAILSDAV_API_TOKEN` | Optional. Bearer token for `RAILSDAV_API_URL`. Must match `CALLSCREEN_API_TOKEN` set on the railsdav side. |
 | `ADMIN_EMAIL` | Seed admin email |
 | `ADMIN_PASSWORD` | Seed admin password (REQUIRED in production) |
 | `SOLID_QUEUE_IN_PUMA` | Set to `1` to run the Solid Queue supervisor inside Puma; default off in dev, on in our Docker image |

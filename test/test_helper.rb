@@ -10,6 +10,10 @@ ENV["MOONSHOT_MODEL"] ||= "moonshot-v1-8k"
 ENV["TELNYX_API_KEY"] ||= "test-telnyx-key"
 ENV["WHISPER_API_URL"] ||= "http://faster-whisper.test:8000"
 ENV["NTFY_URL"] ||= "http://ntfy.test/callscreen"
+# Default to OFF so existing tests don't accidentally trigger external lookups.
+# Tests that exercise the lookup explicitly set these via stubs.
+ENV["RAILSDAV_API_URL"] ||= ""
+ENV["RAILSDAV_API_TOKEN"] ||= ""
 
 require_relative "../config/environment"
 require "rails/test_help"

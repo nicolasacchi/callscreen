@@ -13,8 +13,11 @@ class TelnyxController < ApplicationController
     from = PhoneNumberNormalizer.normalize(params[:From])
     to = params[:To]
 
+    external = RailsdavContactsClient.lookup(from)
+
     contact = Contact.find_or_initialize_by(phone: from)
     contact.last_called_at = Time.current
+    contact.name = external.name if external.matched? && contact.name.blank? && external.name.present?
     contact.save!
 
     call = Call.create!(
@@ -25,6 +28,30 @@ class TelnyxController < ApplicationController
       contact: contact
     )
 
+    # Apply railsdav policy first: it's the centrally-managed source of truth.
+    # Local blacklisted/whitelisted flags below remain a per-operator override
+    # for the "screen" / no-match cases.
+    if external.matched?
+      case external.policy
+      when "block"
+        call.update!(
+          status: :spam,
+          ai_classification: {
+            "classification" => "spam",
+            "confidence" => 1.0,
+            "reason" => "Railsdav policy: block (#{external.addressbook})"
+          }
+        )
+        NotifyJob.perform_later(call.id)
+        render_texml TexmlBuilder.reject
+        return
+      when "allow"
+        call.update!(status: :legit)
+        forward_or_record(call)
+        return
+      end
+    end
+
     if contact.blacklisted?
       call.update!(status: :spam)
       render_texml TexmlBuilder.reject
@@ -33,13 +60,7 @@ class TelnyxController < ApplicationController
 
     if contact.whitelisted?
       call.update!(status: :legit)
-      forward_number = ENV["FORWARD_NUMBER"]
-      if forward_number.present?
-        render_texml TexmlBuilder.forward_call(forward_number)
-      else
-        call.update!(status: :recording)
-        render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
-      end
+      forward_or_record(call)
       return
     end
 
@@ -54,13 +75,7 @@ class TelnyxController < ApplicationController
         return
       elsif rule_match.action_allow?
         call.update!(status: :legit)
-        forward_number = ENV["FORWARD_NUMBER"]
-        if forward_number.present?
-          render_texml TexmlBuilder.forward_call(forward_number)
-        else
-          call.update!(status: :recording)
-          render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
-        end
+        forward_or_record(call)
         return
       end
     end
@@ -239,6 +254,16 @@ class TelnyxController < ApplicationController
 
   def verify_call_sid_format
     head :bad_request unless params[:CallSid].to_s.match?(CALL_SID_FORMAT)
+  end
+
+  def forward_or_record(call)
+    forward_number = ENV["FORWARD_NUMBER"]
+    if forward_number.present?
+      render_texml TexmlBuilder.forward_call(forward_number)
+    else
+      call.update!(status: :recording)
+      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording))
+    end
   end
 
   def webhook_url(action)

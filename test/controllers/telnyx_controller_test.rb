@@ -341,7 +341,99 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  # === Railsdav contacts integration ===
+
+  test "voice with railsdav policy=block rejects without invoking LLM" do
+    with_railsdav_env do
+      stub_railsdav("+393334567890", policy: "block", name: "Mario Spam", addressbook: "Family")
+      post telnyx_voice_url(token: @token),
+           params: { CallSid: "rd-block-1", From: "+393334567890", To: "+390123456789" }
+      assert_response :success
+      assert_match(/<Reject\/>/, @response.body)
+
+      call = Call.find_by!(call_sid: "rd-block-1")
+      assert_equal "spam", call.status
+      assert_equal "Mario Spam", call.contact.name
+      assert_includes call.ai_classification["reason"], "Railsdav policy: block"
+      # No LLM call should have happened (Moonshot endpoint not stubbed → if invoked, WebMock raises)
+    end
+  end
+
+  test "voice with railsdav policy=allow forwards (or records) and skips screening" do
+    with_railsdav_env do
+      stub_railsdav("+393335551111", policy: "allow", name: "Mama", addressbook: "Family")
+      ENV["FORWARD_NUMBER"] = "+390987654321"
+      post telnyx_voice_url(token: @token),
+           params: { CallSid: "rd-allow-1", From: "+393335551111", To: "+390123456789" }
+      assert_response :success
+      assert_match(/<Dial[^>]*>\+390987654321<\/Dial>/, @response.body)
+
+      call = Call.find_by!(call_sid: "rd-allow-1")
+      assert_equal "legit", call.status
+      assert_equal "Mama", call.contact.name
+    ensure
+      ENV.delete("FORWARD_NUMBER")
+    end
+  end
+
+  test "voice with railsdav policy=screen falls through to screening but enriches contact name" do
+    with_railsdav_env do
+      stub_railsdav("+393336662222", policy: "screen", name: "Acquaintance", addressbook: "Work")
+      post telnyx_voice_url(token: @token),
+           params: { CallSid: "rd-screen-1", From: "+393336662222", To: "+390123456789" }
+      assert_response :success
+      assert_match(/<Gather/, @response.body)
+
+      call = Call.find_by!(call_sid: "rd-screen-1")
+      assert_equal "screening", call.status
+      assert_equal "Acquaintance", call.contact.name
+    end
+  end
+
+  test "voice with railsdav unreachable falls through to existing pipeline (fail-open)" do
+    with_railsdav_env do
+      stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup}).to_raise(Errno::ECONNREFUSED)
+      post telnyx_voice_url(token: @token),
+           params: { CallSid: "rd-down-1", From: "+393339991111", To: "+390123456789" }
+      assert_response :success
+      assert_match(/<Gather/, @response.body)
+      assert_equal "screening", Call.find_by!(call_sid: "rd-down-1").status
+    end
+  end
+
+  test "voice with railsdav match=false falls through to existing pipeline" do
+    with_railsdav_env do
+      stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup})
+        .to_return(status: 200, body: { match: false }.to_json, headers: { "Content-Type" => "application/json" })
+      post telnyx_voice_url(token: @token),
+           params: { CallSid: "rd-miss-1", From: "+393339992222", To: "+390123456789" }
+      assert_response :success
+      assert_match(/<Gather/, @response.body)
+    end
+  end
+
   private
+
+  def with_railsdav_env
+    prev_url = ENV["RAILSDAV_API_URL"]
+    prev_token = ENV["RAILSDAV_API_TOKEN"]
+    ENV["RAILSDAV_API_URL"] = "http://railsdav.test:3000"
+    ENV["RAILSDAV_API_TOKEN"] = "test-railsdav-token"
+    yield
+  ensure
+    ENV["RAILSDAV_API_URL"] = prev_url
+    ENV["RAILSDAV_API_TOKEN"] = prev_token
+  end
+
+  def stub_railsdav(phone, policy:, name:, addressbook:)
+    stub_request(:get, "http://railsdav.test:3000/api/contact_lookup")
+      .with(query: { phone: phone })
+      .to_return(
+        status: 200,
+        body: { match: true, name: name, policy: policy, addressbook: addressbook, contact_id: 1 }.to_json,
+        headers: { "Content-Type" => "application/json" }
+      )
+  end
 
   def stub_moonshot(classification, confidence, reason)
     body = {
