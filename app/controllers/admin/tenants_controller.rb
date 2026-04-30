@@ -50,10 +50,13 @@ module Admin
         return
       end
 
-      @tenant.destroy
-      redirect_to admin_tenants_path, notice: "Tenant deleted."
-    rescue ActiveRecord::DeleteRestrictionError => e
-      redirect_to admin_tenants_path, alert: "Cannot delete: #{e.message}"
+      if @tenant.destroy
+        redirect_to admin_tenants_path, notice: "Tenant deleted."
+      else
+        # restrict_with_error puts the message on errors[:base]
+        msg = @tenant.errors.full_messages.first || "tenant has dependent records"
+        redirect_to admin_tenants_path, alert: "Cannot delete: #{msg}"
+      end
     end
 
     private
