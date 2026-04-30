@@ -64,15 +64,13 @@ def parse_catalog(path: Path) -> list[Variant]:
     """
     src = path.read_text(encoding="utf-8")
 
-    # Resolve EMAIL_PHONETIC interpolation: anywhere we find #{EMAIL_PHONETIC}
-    # in a text: "...", swap it for the literal value defined at the top.
+    # Resolve EMAIL_PHONETIC interpolation if it's present (older catalogs
+    # included the email inline; newer ones don't). Treat absence as empty.
     email_match = re.search(
         r'EMAIL_PHONETIC\s*=\s*"([^"]+)"',
         src,
     )
-    if not email_match:
-        raise SystemExit("Could not find EMAIL_PHONETIC constant in catalog")
-    email = email_match.group(1)
+    email = email_match.group(1) if email_match else ""
 
     variants: list[Variant] = []
     # [\s\S]*? is lazy any-char incl. newlines — necessary because labels may
