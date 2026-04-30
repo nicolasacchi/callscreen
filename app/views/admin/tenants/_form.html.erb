@@ -1,0 +1,84 @@
+<%= form_with(model: @tenant, url: form_url, method: form_method, class: "card") do |f| %>
+  <% if @tenant.errors.any? %>
+    <div class="flash alert">
+      <%= @tenant.errors.full_messages.to_sentence %>
+    </div>
+  <% end %>
+
+  <h3>Identity</h3>
+  <div class="form-group"><%= f.label :name %>             <%= f.text_field :name %></div>
+  <div class="form-group"><%= f.label :slug %>             <%= f.text_field :slug %></div>
+  <div class="form-group"><%= f.label :email %>            <%= f.email_field :email %></div>
+  <div class="form-group">
+    <%= f.label :password, @tenant.persisted? ? "New password (leave blank to keep)" : "Initial password" %>
+    <%= f.password_field :password, autocomplete: "new-password" %>
+  </div>
+  <div class="form-group">
+    <%= f.label :password_confirmation %>
+    <%= f.password_field :password_confirmation, autocomplete: "new-password" %>
+  </div>
+
+  <h3>Routing</h3>
+  <div class="form-group">
+    <%= f.label :mobile_number, "Mobile (carrier-forward source, E.164)" %>
+    <%= f.text_field :mobile_number %>
+  </div>
+  <div class="form-group">
+    <%= f.label :forward_back_number, "Forward-back (E.164)" %>
+    <%= f.text_field :forward_back_number %>
+  </div>
+  <div class="form-group">
+    <%= f.label :dedicated_number, "Dedicated Telnyx number (B1 path; optional)" %>
+    <%= f.text_field :dedicated_number %>
+    <small style="color: var(--text-muted);">Leave blank for the default B2 path (shared number + History-Info routing).</small>
+  </div>
+  <div class="form-group">
+    <%= f.label :railsdav_username, "railsdav username (links to your contacts)" %>
+    <%= f.text_field :railsdav_username %>
+  </div>
+
+  <h3>Greeting</h3>
+  <div class="form-group">
+    <%= f.label :greeting_variant %>
+    <%= f.select :greeting_variant, GreetingCatalog::VARIANTS.map { |v| [ v.label, v.slug ] } %>
+  </div>
+  <div class="form-group">
+    <%= f.label :greeting_voice %>
+    <%= f.select :greeting_voice, Tenant::ALLOWED_VOICES.map { |v| [ GreetingCatalog::VOICES[v] || v, v ] } %>
+  </div>
+  <div class="form-group">
+    <%= f.label :greeting_tone %>
+    <%= f.select :greeting_tone, GreetingCatalog::TONES.map { |slug, info| [ info[:label], slug ] } %>
+  </div>
+  <div class="form-group">
+    <%= f.label :greeting_language %>
+    <%= f.select :greeting_language, [ [ "Italian", "it-IT" ], [ "English", "en-US" ], [ "French", "fr-FR" ], [ "German", "de-DE" ], [ "Spanish", "es-ES" ] ] %>
+  </div>
+
+  <h3>Screener tuning</h3>
+  <div class="form-group"><%= f.label :spam_sensitivity %>            <%= f.number_field :spam_sensitivity, step: 0.05, min: 0, max: 1 %></div>
+  <div class="form-group"><%= f.label :screening_speech_timeout %>    <%= f.text_field :screening_speech_timeout %></div>
+  <div class="form-group"><%= f.label :max_recording_seconds %>       <%= f.number_field :max_recording_seconds, min: 5, max: 600 %></div>
+
+  <h3>Anti-abuse</h3>
+  <div class="form-group"><%= f.label :max_calls_per_caller_per_day %>  <%= f.number_field :max_calls_per_caller_per_day, min: 1, max: 1000 %></div>
+  <div class="form-group"><%= f.label :auto_blacklist_threshold %>      <%= f.number_field :auto_blacklist_threshold, min: 1, max: 100 %></div>
+  <div class="form-group"><%= f.label :auto_blacklist_window_days %>    <%= f.number_field :auto_blacklist_window_days, min: 1, max: 365 %></div>
+
+  <h3>Notification</h3>
+  <div class="form-group"><%= f.label :ntfy_url %>      <%= f.text_field :ntfy_url %></div>
+  <div class="form-group"><%= f.label :ntfy_priority %> <%= f.select :ntfy_priority, %w[min low default high max] %></div>
+
+  <h3>Permissions</h3>
+  <div class="form-group form-check">
+    <%= f.check_box :admin %>
+    <%= f.label :admin, "Super-admin (can manage other tenants)" %>
+  </div>
+  <div class="form-group form-check">
+    <%= f.check_box :active %>
+    <%= f.label :active, "Active" %>
+  </div>
+
+  <%= f.submit class: "btn btn-primary" %>
+  <%= link_to "Cancel", admin_tenants_path, class: "btn" %>
+<% end %>

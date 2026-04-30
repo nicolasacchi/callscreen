@@ -3,13 +3,13 @@
     {
       "warning_type": "File Access",
       "warning_code": 16,
-      "fingerprint": "1357c135040c2f9695269a2456098b9518bcc1755e2ae8eb95bc48597b1edabf",
+      "fingerprint": "258bca448c8c4ef2c6666cb013634546572129b805e17adf1a920d5d95fcd05c",
       "check_name": "SendFile",
-      "message": "Model attribute used in file name",
+      "message": "Parameter value used in file name",
       "file": "app/controllers/recordings_controller.rb",
-      "line": 14,
+      "line": 19,
       "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
-      "code": "send_file(Rails.root.join(\"storage\", \"recordings\").join(\"#{Call.find(params[:id]).call_sid}.wav\"), :type => \"audio/wav\", :disposition => :inline)",
+      "code": "send_file(Rails.root.join(\"storage\", \"recordings\").join(\"#{(Call.all or current_tenant.calls).find(params[:id]).call_sid}.wav\"), :type => \"audio/wav\", :disposition => :inline)",
       "render_path": null,
       "location": {
         "type": "method",
@@ -19,7 +19,7 @@
       "user_input": "Call.find(params[:id]).call_sid",
       "confidence": "Weak",
       "cwe_id": [22],
-      "note": "False positive. call_sid is validated by FILENAME_FORMAT regex (filename-safe chars + colon/equals for Telnyx base64url, no slash) before path construction in RecordingsController#show, and again at webhook entry in TelnyxController#verify_call_sid_format. Path is built from static Rails.root + regex-validated call_sid + literal .wav suffix - no traversal possible. Reviewed 2026-04-25, regex relaxed 2026-04-29."
+      "note": "False positive. call_sid is validated by FILENAME_FORMAT regex (filename-safe chars + colon/equals for Telnyx base64url, no slash) before path construction in RecordingsController#show, and again at webhook entry in TelnyxController#verify_call_sid_format. Path is built from static Rails.root + regex-validated call_sid + literal .wav suffix - no traversal possible. Reviewed 2026-04-30."
     },
     {
       "warning_type": "File Access",
@@ -41,8 +41,29 @@
       "confidence": "Weak",
       "cwe_id": [22],
       "note": "False positive. params[:slug], params[:voice], params[:tone] are each triply validated before path construction in GreetingsController#show: (1) regex (lowercase a-z0-9_, max 40 chars, no slash), (2) catalog/Setting allowlist (GreetingCatalog::SLUGS / Setting::ALLOWED_VOICES / GreetingCatalog::TONE_SLUGS). Path is built from static Rails.root + three allowlist-validated segments + literal .wav. No traversal possible. Reviewed 2026-04-30."
+    },
+    {
+      "warning_type": "Mass Assignment",
+      "warning_code": 70,
+      "fingerprint": "463fbe075a2de2648669966a1c5d00e6b84b230d8a8a8bbcf8cf86097d3502f4",
+      "check_name": "PermitAttributes",
+      "message": "Potentially dangerous key allowed for mass assignment",
+      "file": "app/controllers/admin/tenants_controller.rb",
+      "line": 78,
+      "link": "https://brakemanscanner.org/docs/warning_types/mass_assignment/",
+      "code": "params.require(:tenant).permit(:name, :slug, :email, :mobile_number, :forward_back_number, :dedicated_number, :railsdav_username, :ntfy_url, :ntfy_priority, :greeting_variant, :greeting_voice, :greeting_tone, :greeting_language, :greeting_text, :voicemail_prompt, :spam_sensitivity, :max_recording_seconds, :screening_speech_timeout, :max_calls_per_caller_per_day, :auto_blacklist_threshold, :auto_blacklist_window_days, :admin, :active, :password, :password_confirmation)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Admin::TenantsController",
+        "method": "tenant_params"
+      },
+      "user_input": ":admin",
+      "confidence": "High",
+      "cwe_id": [915],
+      "note": "Intentional. Admin::TenantsController is gated by `before_action :require_super_admin!`, so only an existing super-admin can mass-assign :admin or :active. The corresponding ProfilesController (used by all other tenants for self-edit) does NOT permit :admin. Reviewed 2026-04-30."
     }
   ],
-  "updated": "2026-04-29 16:30:00 +0200",
+  "updated": "2026-04-30 21:03:00 +0000",
   "brakeman_version": "8.0.4"
 }

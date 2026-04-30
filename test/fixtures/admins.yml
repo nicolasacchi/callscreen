@@ -1,2 +1,0 @@
-# Admins are created in test setup blocks because Devise password hashing
-# (bcrypt with cost 1 in test env) is easier to do imperatively than in YAML.

@@ -1,0 +1,92 @@
+<h1>Edit profile</h1>
+
+<%= form_with(model: @tenant, url: admin_profile_path, method: :patch, class: "card") do |f| %>
+  <% if @tenant.errors.any? %>
+    <div class="flash alert">
+      <%= @tenant.errors.full_messages.to_sentence %>
+    </div>
+  <% end %>
+
+  <h3>Identity</h3>
+  <div class="form-group">
+    <%= f.label :name %>
+    <%= f.text_field :name %>
+  </div>
+  <div class="form-group">
+    <%= f.label :mobile_number, "Mobile (E.164, e.g. +393990000001)" %>
+    <%= f.text_field :mobile_number %>
+    <small style="color: var(--text-muted);">This must match the mobile number you carrier-forward from. Used to identify you on inbound calls via SIP History-Info.</small>
+  </div>
+  <div class="form-group">
+    <%= f.label :forward_back_number, "Forward-back (E.164)" %>
+    <%= f.text_field :forward_back_number %>
+    <small style="color: var(--text-muted);">Number the screener dials when a call is whitelisted/legit. Defaults to your mobile if blank.</small>
+  </div>
+
+  <h3>Greeting</h3>
+  <div class="form-group">
+    <%= f.label :greeting_variant %>
+    <%= f.select :greeting_variant, GreetingCatalog::VARIANTS.map { |v| [ v.label, v.slug ] } %>
+  </div>
+  <div class="form-group">
+    <%= f.label :greeting_voice %>
+    <%= f.select :greeting_voice, Tenant::ALLOWED_VOICES.map { |v| [ GreetingCatalog::VOICES[v] || v, v ] } %>
+  </div>
+  <div class="form-group">
+    <%= f.label :greeting_tone %>
+    <%= f.select :greeting_tone, GreetingCatalog::TONES.map { |slug, info| [ info[:label], slug ] } %>
+  </div>
+  <div class="form-group">
+    <%= f.label :greeting_language %>
+    <%= f.select :greeting_language, [ [ "Italian", "it-IT" ], [ "English", "en-US" ], [ "French", "fr-FR" ], [ "German", "de-DE" ], [ "Spanish", "es-ES" ] ] %>
+  </div>
+  <div class="form-group">
+    <%= f.label :greeting_text, "Fallback greeting text" %>
+    <%= f.text_area :greeting_text %>
+  </div>
+  <div class="form-group">
+    <%= f.label :voicemail_prompt %>
+    <%= f.text_area :voicemail_prompt %>
+  </div>
+
+  <h3>Screener tuning</h3>
+  <div class="form-group">
+    <%= f.label :spam_sensitivity, "Spam sensitivity (0.0–1.0)" %>
+    <%= f.number_field :spam_sensitivity, step: 0.05, min: 0, max: 1 %>
+  </div>
+  <div class="form-group">
+    <%= f.label :screening_speech_timeout, "Speech timeout (seconds, or 'auto')" %>
+    <%= f.text_field :screening_speech_timeout %>
+  </div>
+  <div class="form-group">
+    <%= f.label :max_recording_seconds, "Max voicemail length (seconds)" %>
+    <%= f.number_field :max_recording_seconds, min: 5, max: 600 %>
+  </div>
+
+  <h3>Anti-abuse</h3>
+  <div class="form-group">
+    <%= f.label :max_calls_per_caller_per_day %>
+    <%= f.number_field :max_calls_per_caller_per_day, min: 1, max: 1000 %>
+  </div>
+  <div class="form-group">
+    <%= f.label :auto_blacklist_threshold, "Auto-blacklist after N spam classifications" %>
+    <%= f.number_field :auto_blacklist_threshold, min: 1, max: 100 %>
+  </div>
+  <div class="form-group">
+    <%= f.label :auto_blacklist_window_days, "…within (days)" %>
+    <%= f.number_field :auto_blacklist_window_days, min: 1, max: 365 %>
+  </div>
+
+  <h3>Notifications</h3>
+  <div class="form-group">
+    <%= f.label :ntfy_url, "ntfy URL (optional)" %>
+    <%= f.text_field :ntfy_url %>
+  </div>
+  <div class="form-group">
+    <%= f.label :ntfy_priority %>
+    <%= f.select :ntfy_priority, %w[min low default high max] %>
+  </div>
+
+  <%= f.submit "Save profile", class: "btn btn-primary" %>
+  <%= link_to "Cancel", admin_profile_path, class: "btn" %>
+<% end %>

@@ -1,15 +1,15 @@
 module Admin
   class RulesController < BaseController
     def index
-      @rules = Rule.order(priority: :desc, created_at: :desc)
+      @rules = viewing_tenant.rules.order(priority: :desc, created_at: :desc)
     end
 
     def new
-      @rule = Rule.new
+      @rule = viewing_tenant.rules.new
     end
 
     def create
-      @rule = Rule.new(rule_params)
+      @rule = viewing_tenant.rules.new(rule_params)
       if @rule.save
         redirect_to admin_rules_path, notice: "Rule created."
       else
@@ -18,11 +18,11 @@ module Admin
     end
 
     def edit
-      @rule = Rule.find(params[:id])
+      @rule = viewing_tenant.rules.find(params[:id])
     end
 
     def update
-      @rule = Rule.find(params[:id])
+      @rule = viewing_tenant.rules.find(params[:id])
       if @rule.update(rule_params)
         redirect_to admin_rules_path, notice: "Rule updated."
       else
@@ -31,7 +31,7 @@ module Admin
     end
 
     def destroy
-      Rule.find(params[:id]).destroy
+      viewing_tenant.rules.find(params[:id]).destroy
       redirect_to admin_rules_path, notice: "Rule deleted."
     end
 

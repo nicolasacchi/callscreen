@@ -1,0 +1,43 @@
+<h1><%= @tenant.display_name %></h1>
+
+<div class="card">
+  <dl class="detail-grid">
+    <dt>Email</dt><dd><%= @tenant.email %></dd>
+    <dt>Slug</dt><dd><%= @tenant.slug %></dd>
+    <dt>Mobile (carrier-forward source)</dt><dd><%= @tenant.mobile_number || "—" %></dd>
+    <dt>Forward-back</dt><dd><%= @tenant.forward_back_number || "—" %></dd>
+    <dt>Dedicated number (B1 path)</dt><dd><%= @tenant.dedicated_number || "(none — shared Telnyx number)" %></dd>
+    <dt>railsdav username</dt><dd><%= @tenant.railsdav_username || "—" %></dd>
+    <dt>Default tenant</dt><dd><%= @tenant.default? ? "Yes" : "No" %></dd>
+    <dt>Super-admin</dt><dd><%= @tenant.super_admin? ? "Yes" : "No" %></dd>
+    <dt>Active</dt><dd><%= @tenant.active? ? "Yes" : "No" %></dd>
+  </dl>
+  <p style="margin-top: 1rem;">
+    <%= link_to "Edit", edit_admin_tenant_path(@tenant), class: "btn" %>
+    <% unless @tenant.default? %>
+      <%= button_to "Delete tenant", admin_tenant_path(@tenant),
+                    method: :delete,
+                    class: "btn btn-danger",
+                    form: { style: "display:inline;" },
+                    data: { turbo_confirm: "Delete tenant #{@tenant.display_name}? This cannot be undone." } %>
+    <% end %>
+  </p>
+</div>
+
+<div class="card">
+  <h3>Last 20 calls (this tenant)</h3>
+  <table>
+    <thead>
+      <tr><th>From</th><th>Status</th><th>When</th></tr>
+    </thead>
+    <tbody>
+      <% @recent_calls.each do |c| %>
+        <tr>
+          <td><%= c.contact_name %></td>
+          <td><span class="badge badge-<%= c.status %>"><%= c.status %></span></td>
+          <td><%= c.created_at.strftime("%Y-%m-%d %H:%M") %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>

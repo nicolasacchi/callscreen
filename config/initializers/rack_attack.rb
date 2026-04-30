@@ -10,7 +10,7 @@ end
 # Throttle admin login by submitted email (slows credential stuffing across IPs)
 Rack::Attack.throttle("admin/login/email", limit: 5, period: 20.minutes) do |req|
   if req.path == "/admin/login" && req.post?
-    email = req.params.dig("admin_user", "email").to_s.downcase.strip.presence
+    email = req.params.dig("tenant", "email").to_s.downcase.strip.presence
     email
   end
 end

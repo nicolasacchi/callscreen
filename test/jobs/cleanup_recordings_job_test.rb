@@ -1,6 +1,8 @@
 require "test_helper"
 
 class CleanupRecordingsJobTest < ActiveJob::TestCase
+  setup { @tenant = tenants(:default) }
+
   test "removes recordings older than auto_delete_days and nullifies path" do
     Setting.set("auto_delete_days", "30")
 
@@ -8,7 +10,7 @@ class CleanupRecordingsJobTest < ActiveJob::TestCase
     FileUtils.mkdir_p(old_path.dirname)
     File.binwrite(old_path, "old wav")
 
-    old_call = Call.create!(
+    old_call = @tenant.calls.create!(
       call_sid: "old-cleanup-test",
       from_number: "+390000000000",
       status: :completed,
@@ -18,7 +20,7 @@ class CleanupRecordingsJobTest < ActiveJob::TestCase
 
     new_path = Rails.root.join("storage/recordings/recent-cleanup-test.wav")
     File.binwrite(new_path, "recent wav")
-    new_call = Call.create!(
+    new_call = @tenant.calls.create!(
       call_sid: "recent-cleanup-test",
       from_number: "+390000000001",
       status: :completed,
@@ -41,7 +43,7 @@ class CleanupRecordingsJobTest < ActiveJob::TestCase
   test "nullifies transcripts and ai_classification past retention (NEW H11 GDPR)" do
     Setting.set("auto_delete_transcripts_days", "30")
 
-    old_call = Call.create!(
+    old_call = @tenant.calls.create!(
       call_sid: "old-transcripts-test",
       from_number: "+393339999999",
       status: :completed,
@@ -51,7 +53,7 @@ class CleanupRecordingsJobTest < ActiveJob::TestCase
       created_at: 60.days.ago
     )
 
-    fresh_call = Call.create!(
+    fresh_call = @tenant.calls.create!(
       call_sid: "fresh-transcripts-test",
       from_number: "+393338888888",
       status: :completed,

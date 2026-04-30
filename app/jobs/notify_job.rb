@@ -5,19 +5,27 @@ class NotifyJob < ApplicationJob
     call = Call.find(call_id)
     return if call.notified_at.present?
 
+    tenant = call.tenant
+    ntfy_url      = tenant&.ntfy_url
+    ntfy_priority = tenant&.ntfy_priority
+
     if call.spam?
       NtfyNotifier.notify(
         title: "📵 Spam: #{call.from_number}",
         message: spam_message(call),
         priority: "low",
-        tags: [ "no_entry", "spam" ]
+        tags: [ "no_entry", "spam" ],
+        url: ntfy_url,
+        default_priority: ntfy_priority
       )
     else
       NtfyNotifier.notify(
         title: "📞 Da #{call.from_number}",
         message: legit_message(call),
         priority: "high",
-        tags: [ "phone", call.status ]
+        tags: [ "phone", call.status ],
+        url: ntfy_url,
+        default_priority: ntfy_priority
       )
     end
 

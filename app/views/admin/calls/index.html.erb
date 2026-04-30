@@ -1,4 +1,4 @@
-<h1>Calls</h1>
+<h1>Calls<%= " — #{viewing_tenant.display_name}" if super_admin? && params[:tenant_id].present? %></h1>
 
 <div class="toolbar">
   <%= form_tag admin_calls_path, method: :get, style: "display: flex; gap: 0.5rem; align-items: center;" do %>
@@ -9,6 +9,16 @@
         <option value="<%= s %>" <%= "selected" if params[:status] == s %>><%= s.capitalize %></option>
       <% end %>
     </select>
+    <% if super_admin? %>
+      <select name="tenant_id" onchange="this.form.submit()">
+        <option value="">My calls (<%= current_tenant.display_name %>)</option>
+        <% Tenant.order(:name).each do |t| %>
+          <option value="<%= t.id %>" <%= "selected" if params[:tenant_id].to_s == t.id.to_s %>>
+            <%= t.display_name %>
+          </option>
+        <% end %>
+      </select>
+    <% end %>
     <button type="submit" class="btn btn-sm">Filter</button>
   <% end %>
 </div>
@@ -36,7 +46,12 @@
             <%= call.from_number %>
           <% end %>
         </td>
-        <td><span class="badge badge-<%= call.status %>"><%= call.status %></span></td>
+        <td>
+          <span class="badge badge-<%= call.status %>"><%= call.status %></span>
+          <% if call.unattributed %>
+            <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: var(--warning);" title="Tenant could not be identified from History-Info or dedicated_number">unattributed</span>
+          <% end %>
+        </td>
         <td class="truncate"><%= truncate(call.screening_transcript, length: 60) %></td>
         <td class="truncate"><%= truncate(call.voicemail_transcript, length: 60) %></td>
         <td><%= call.duration_seconds ? "#{call.duration_seconds}s" : "-" %></td>

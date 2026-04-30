@@ -1,0 +1,45 @@
+<h1>Profile</h1>
+
+<div class="card">
+  <h3>Identity</h3>
+  <dl class="detail-grid">
+    <dt>Display name</dt><dd><%= current_tenant.display_name %></dd>
+    <dt>Email</dt><dd><%= current_tenant.email %></dd>
+    <dt>Slug</dt><dd><%= current_tenant.slug %></dd>
+    <dt>Mobile</dt><dd><%= current_tenant.mobile_number || "(not set)" %></dd>
+    <dt>Forward-back</dt><dd><%= current_tenant.forward_back_number || "(not set)" %></dd>
+    <dt>Dedicated number</dt><dd><%= current_tenant.dedicated_number || "(none — shared Telnyx number)" %></dd>
+    <dt>railsdav username</dt><dd><%= current_tenant.railsdav_username || "(not linked)" %></dd>
+  </dl>
+</div>
+
+<div class="card">
+  <h3>Screener</h3>
+  <dl class="detail-grid">
+    <dt>Greeting variant</dt><dd><%= current_tenant.greeting_variant %></dd>
+    <dt>Voice / tone</dt><dd><%= current_tenant.greeting_voice %> / <%= current_tenant.greeting_tone %></dd>
+    <dt>Language</dt><dd><%= current_tenant.greeting_language %></dd>
+    <dt>Spam sensitivity</dt><dd><%= current_tenant.spam_sensitivity %></dd>
+    <dt>Speech timeout</dt><dd><%= current_tenant.screening_speech_timeout %>s</dd>
+    <dt>Max recording</dt><dd><%= current_tenant.max_recording_seconds %>s</dd>
+  </dl>
+</div>
+
+<div class="card">
+  <h3>Anti-abuse limits</h3>
+  <dl class="detail-grid">
+    <dt>Max calls / caller / 24h</dt><dd><%= current_tenant.max_calls_per_caller_per_day %></dd>
+    <dt>Auto-blacklist threshold</dt><dd><%= current_tenant.auto_blacklist_threshold %></dd>
+    <dt>Auto-blacklist window</dt><dd><%= current_tenant.auto_blacklist_window_days %> days</dd>
+  </dl>
+</div>
+
+<div class="card">
+  <h3>Notification</h3>
+  <dl class="detail-grid">
+    <dt>ntfy URL</dt><dd><%= current_tenant.ntfy_url || "(none)" %></dd>
+    <dt>Priority</dt><dd><%= current_tenant.ntfy_priority %></dd>
+  </dl>
+</div>
+
+<%= link_to "Edit profile", edit_admin_profile_path, class: "btn btn-primary" %>

@@ -11,14 +11,17 @@ class NtfyNotifier
       @mutex.synchronize { @consecutive_failures = 0 }
     end
 
-    def notify(title:, message:, priority: nil, tags: [])
-      url = ENV["NTFY_URL"]
-      return unless url.present?
+    # Per-tenant push: caller can pass `url:` and `default_priority:` to
+    # override the global ENV defaults. Both fall back to ENV when blank
+    # so single-tenant installs keep working unchanged.
+    def notify(title:, message:, priority: nil, tags: [], url: nil, default_priority: nil)
+      destination = url.presence || ENV["NTFY_URL"]
+      return unless destination.present?
 
-      HTTParty.post(url,
+      HTTParty.post(destination,
         headers: {
           "Title" => title.to_s.truncate(100),
-          "Priority" => priority || ENV.fetch("NTFY_PRIORITY", "default"),
+          "Priority" => priority || default_priority || ENV.fetch("NTFY_PRIORITY", "default"),
           "Tags" => Array(tags).join(","),
           "X-Request-ID" => Current.request_id.to_s
         },

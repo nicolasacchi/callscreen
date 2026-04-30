@@ -1,4 +1,6 @@
 class Rule < ApplicationRecord
+  belongs_to :tenant
+
   REGEX_VALIDATION_TIMEOUT = 0.05
   REGEX_VALIDATION_INPUT = ("a" * 100) + "X"
 

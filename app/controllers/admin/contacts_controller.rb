@@ -1,7 +1,7 @@
 module Admin
   class ContactsController < BaseController
     def index
-      scope = Contact.order(last_called_at: :desc)
+      scope = viewing_tenant.contacts.order(last_called_at: :desc)
       if params[:q].present?
         like = ActiveRecord::Base.sanitize_sql_like(params[:q].to_s, "!")
         scope = scope.where("phone LIKE ? ESCAPE '!' OR name LIKE ? ESCAPE '!'", "%#{like}%", "%#{like}%")
@@ -10,16 +10,16 @@ module Admin
     end
 
     def show
-      @contact = Contact.find(params[:id])
-      @calls = @contact.calls.recent.limit(20)
+      @contact = viewing_tenant.contacts.find(params[:id])
+      @calls   = @contact.calls.recent.limit(20)
     end
 
     def new
-      @contact = Contact.new
+      @contact = viewing_tenant.contacts.new
     end
 
     def create
-      @contact = Contact.new(contact_params)
+      @contact = viewing_tenant.contacts.new(contact_params)
       @contact.phone = PhoneNumberNormalizer.normalize(@contact.phone)
       if @contact.save
         redirect_to admin_contact_path(@contact), notice: "Contact created."
@@ -29,11 +29,11 @@ module Admin
     end
 
     def edit
-      @contact = Contact.find(params[:id])
+      @contact = viewing_tenant.contacts.find(params[:id])
     end
 
     def update
-      @contact = Contact.find(params[:id])
+      @contact = viewing_tenant.contacts.find(params[:id])
       if @contact.update(contact_params)
         redirect_to admin_contact_path(@contact), notice: "Contact updated."
       else
@@ -42,7 +42,7 @@ module Admin
     end
 
     def destroy
-      contact = Contact.find(params[:id])
+      contact = viewing_tenant.contacts.find(params[:id])
       contact.destroy
       redirect_to admin_contacts_path, notice: "Contact deleted."
     end

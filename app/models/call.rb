@@ -1,4 +1,5 @@
 class Call < ApplicationRecord
+  belongs_to :tenant
   belongs_to :contact, optional: true, counter_cache: true
 
   enum :status, {
@@ -12,10 +13,28 @@ class Call < ApplicationRecord
     failed: 7
   }
 
+  FLOW_STATES = %w[
+    initiated
+    answered
+    greeting_playing
+    awaiting_speech
+    classifying
+    clarification_playing
+    clarification_awaiting_speech
+    voicemail_prompt_playing
+    recording
+    transfer_dialing
+    hanging_up_after_speak
+    done
+  ].freeze
+
   serialize :ai_classification, coder: JSON
 
-  scope :today, -> { where(created_at: Time.current.all_day) }
-  scope :recent, -> { order(created_at: :desc) }
+  validates :flow_state, inclusion: { in: FLOW_STATES }
+
+  scope :today,        -> { where(created_at: Time.current.all_day) }
+  scope :recent,       -> { order(created_at: :desc) }
+  scope :unattributed, -> { where(unattributed: true) }
 
   def contact_name
     contact&.display_name || from_number
