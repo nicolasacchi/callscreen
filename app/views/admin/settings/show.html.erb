@@ -40,7 +40,7 @@
           <% current_tone = Setting.get("greeting_tone").to_s %>
           <% Setting::ALLOWED_VOICES.each do |v| %>
             <% label = GreetingCatalog::VOICES[v] || v %>
-            <% rendered = Rails.root.join("storage/greetings", current_variant, v, "#{current_tone}.wav").exist? %>
+            <% rendered = GreetingsStorage.path_for(current_variant, v, current_tone).exist? %>
             <option value="<%= v %>" <%= "selected" if setting.value == v %>>
               <%= label %><%= rendered ? " ✓" : "" %>
             </option>

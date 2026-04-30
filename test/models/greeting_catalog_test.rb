@@ -19,10 +19,14 @@ class GreetingCatalogTest < ActiveSupport::TestCase
     end
   end
 
-  test "every variant text contains the phonetic email" do
+  test "no variant text mentions the email (TTS-unfriendly)" do
     GreetingCatalog::VARIANTS.each do |v|
-      assert_includes v.text, "torreblu",
-                      "variant #{v.slug} should mention the email"
+      assert_not_includes v.text.downcase, "torreblu",
+                          "variant #{v.slug} must not mention the email in the spoken greeting"
+      assert_not_includes v.text.downcase, "@",
+                          "variant #{v.slug} must not contain literal @"
+      assert_not_includes v.text.downcase, "chiocciola",
+                          "variant #{v.slug} must not contain phonetic @"
     end
   end
 

@@ -24,13 +24,13 @@
     {
       "warning_type": "File Access",
       "warning_code": 16,
-      "fingerprint": "1dc222232cf4b22c7ccc39619a2aff1c0700521cc3b3c7a2c418a51eafc6e1e0",
+      "fingerprint": "c68b82201de60a2565a8302a7e36b85816652e64bf583ec99ac722cb61f3192f",
       "check_name": "SendFile",
       "message": "Parameter value used in file name",
       "file": "app/controllers/greetings_controller.rb",
-      "line": 25,
+      "line": 24,
       "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
-      "code": "send_file(Rails.root.join(\"storage\", \"greetings\").join(params[:slug].to_s, :BRAKEMAN_SAFE_LITERAL, \"#{params[:tone].to_s}.wav\"), :type => \"audio/wav\", :disposition => :inline)",
+      "code": "send_file(GreetingsStorage.path_for(params[:slug].to_s, :BRAKEMAN_SAFE_LITERAL, params[:tone].to_s), :type => \"audio/wav\", :disposition => :inline)",
       "render_path": null,
       "location": {
         "type": "method",

@@ -135,7 +135,7 @@ class TexmlBuilder
       return nil unless GreetingCatalog::ALL_SLUGS.include?(slug.to_s)
       return nil unless Setting::ALLOWED_VOICES.include?(voice.to_s)
       return nil unless GreetingCatalog::TONE_SLUGS.include?(tone.to_s)
-      Rails.root.join("storage", "greetings", slug.to_s, voice.to_s, "#{tone}.wav")
+      GreetingsStorage.path_for(slug, voice, tone)
     end
 
     def greeting_audio_url(slug, voice, tone)

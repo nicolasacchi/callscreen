@@ -63,7 +63,7 @@ class TexmlBuilderTest < ActiveSupport::TestCase
   test "hangup with phrase falls back to Say with safe alice voice when audio missing" do
     voice = Setting.get("greeting_voice")
     tone = Setting.get("greeting_tone")
-    audio = Rails.root.join("storage/greetings/goodbye_spam", voice, "#{tone}.wav")
+    audio = GreetingsStorage.path_for("goodbye_spam", voice, tone)
     FileUtils.rm_f(audio)
 
     xml = TexmlBuilder.hangup(phrase: "goodbye_spam")
@@ -78,7 +78,7 @@ class TexmlBuilderTest < ActiveSupport::TestCase
   test "hangup with phrase emits Play when pre-rendered audio exists" do
     voice = Setting.get("greeting_voice")
     tone = Setting.get("greeting_tone")
-    audio = Rails.root.join("storage/greetings/goodbye_spam", voice, "#{tone}.wav")
+    audio = GreetingsStorage.path_for("goodbye_spam", voice, tone)
     FileUtils.mkdir_p(audio.dirname)
     File.binwrite(audio, "RIFF dummy")
 
@@ -96,7 +96,7 @@ class TexmlBuilderTest < ActiveSupport::TestCase
   test "record_voicemail emits Play of voicemail_prompt when audio exists" do
     voice = Setting.get("greeting_voice")
     tone = Setting.get("greeting_tone")
-    audio = Rails.root.join("storage/greetings/voicemail_prompt", voice, "#{tone}.wav")
+    audio = GreetingsStorage.path_for("voicemail_prompt", voice, tone)
     FileUtils.mkdir_p(audio.dirname)
     File.binwrite(audio, "RIFF dummy")
 
@@ -113,7 +113,7 @@ class TexmlBuilderTest < ActiveSupport::TestCase
   test "record_voicemail falls back to Say with safe alice voice when audio missing" do
     voice = Setting.get("greeting_voice")
     tone = Setting.get("greeting_tone")
-    audio = Rails.root.join("storage/greetings/voicemail_prompt", voice, "#{tone}.wav")
+    audio = GreetingsStorage.path_for("voicemail_prompt", voice, tone)
     FileUtils.rm_f(audio)
 
     xml = TexmlBuilder.record_voicemail(action_url: "https://example.test/recording")
@@ -135,7 +135,7 @@ class TexmlBuilderTest < ActiveSupport::TestCase
     slug = Setting.get("greeting_variant")
     voice = Setting.get("greeting_voice")
     tone = Setting.get("greeting_tone")
-    audio = Rails.root.join("storage/greetings", slug, voice, "#{tone}.wav")
+    audio = GreetingsStorage.path_for(slug, voice, tone)
     FileUtils.mkdir_p(audio.dirname)
     File.binwrite(audio, "RIFF dummy wav data")
 
@@ -154,7 +154,7 @@ class TexmlBuilderTest < ActiveSupport::TestCase
   test "clarify_and_gather emits Play when clarify audio exists" do
     voice = Setting.get("greeting_voice")
     tone = Setting.get("greeting_tone")
-    audio = Rails.root.join("storage/greetings/clarify", voice, "#{tone}.wav")
+    audio = GreetingsStorage.path_for("clarify", voice, tone)
     FileUtils.mkdir_p(audio.dirname)
     File.binwrite(audio, "RIFF clarify dummy")
 
@@ -172,7 +172,7 @@ class TexmlBuilderTest < ActiveSupport::TestCase
   test "clarify_and_gather falls back to Say with the system phrase when audio missing" do
     voice = Setting.get("greeting_voice")
     tone = Setting.get("greeting_tone")
-    audio = Rails.root.join("storage/greetings/clarify", voice, "#{tone}.wav")
+    audio = GreetingsStorage.path_for("clarify", voice, tone)
     FileUtils.rm_f(audio)
 
     xml = TexmlBuilder.clarify_and_gather(action_url: "https://example.test/clarify")
@@ -187,7 +187,7 @@ class TexmlBuilderTest < ActiveSupport::TestCase
     slug = Setting.get("greeting_variant")
     voice = Setting.get("greeting_voice")
     tone = Setting.get("greeting_tone")
-    audio = Rails.root.join("storage/greetings", slug, voice, "#{tone}.wav")
+    audio = GreetingsStorage.path_for(slug, voice, tone)
     FileUtils.rm_f(audio)
 
     xml = TexmlBuilder.greeting_and_gather(action_url: "https://example.test/screen")

@@ -1,60 +1,60 @@
 class GreetingCatalog
   Variant = Struct.new(:slug, :label, :text, keyword_init: true)
 
-  EMAIL_PHONETIC = "operator at example dot com".freeze
-  EMAIL_PHONETIC_EN = "operator at example dot com".freeze
-
   # === Phrases (the textual greeting) ===
+  # All 10 variants are pure invitations to leave a voicemail. The email is
+  # intentionally NOT mentioned in the spoken greeting — TTS pronunciation of
+  # the address is unreliable and the caller can find it through other channels.
   VARIANTS = [
     Variant.new(
       slug: "formal_lei",
       label: "Formal address (Lei)",
-      text: "Buongiorno. In questo momento sono impegnato. La prego di lasciare un messaggio dicendo di cosa ha bisogno: se necessario la richiamerò. In alternativa può scrivermi a #{EMAIL_PHONETIC}."
+      text: "Buongiorno. In questo momento sono impegnato. La prego di lasciare un messaggio dicendo di cosa ha bisogno: se necessario la richiamerò."
     ),
     Variant.new(
       slug: "informal_tu",
       label: "Informal address (tu)",
-      text: "Ciao, sono impegnato. Dimmi di cosa hai bisogno dopo il segnale e ti richiamerò se serve. Oppure scrivimi a #{EMAIL_PHONETIC}."
+      text: "Ciao, sono impegnato. Dimmi di cosa hai bisogno e ti richiamerò se serve."
     ),
     Variant.new(
       slug: "business_meeting",
       label: "In a meeting",
-      text: "Buongiorno, al momento sono in riunione. La prego di lasciare un messaggio con il motivo della chiamata: la richiamerò appena libero. Per messaggi scritti: #{EMAIL_PHONETIC}."
+      text: "Buongiorno, al momento sono in riunione. La prego di lasciare un messaggio con il motivo della chiamata: la richiamerò appena libero."
     ),
     Variant.new(
       slug: "brief_lei",
       label: "Short, formal",
-      text: "Salve, sono impegnato. Mi dica di cosa ha bisogno e la richiamo. Email: #{EMAIL_PHONETIC}."
+      text: "Salve, sono impegnato. Mi dica di cosa ha bisogno e la richiamo."
     ),
     Variant.new(
       slug: "brief_tu",
       label: "Short, informal",
-      text: "Ciao, sono impegnato. Dimmi di cosa hai bisogno e ti richiamo. Email: #{EMAIL_PHONETIC}."
+      text: "Ciao, sono impegnato. Dimmi di cosa hai bisogno e ti richiamo."
     ),
     Variant.new(
       slug: "apologetic",
       label: "Apologetic",
-      text: "Mi scusi, in questo momento non posso rispondere. Mi spieghi brevemente cosa le serve e la richiamerò io. Può anche scrivermi a #{EMAIL_PHONETIC}."
+      text: "Mi scusi, in questo momento non posso rispondere. Mi spieghi brevemente cosa le serve e la richiamerò io."
     ),
     Variant.new(
       slug: "direct",
       label: "Direct, no apology",
-      text: "Pronto, sono impegnato. Dica chi è e di cosa ha bisogno. Se è urgente richiamo io, altrimenti scriva a #{EMAIL_PHONETIC}."
+      text: "Pronto, sono impegnato. Dica chi è e di cosa ha bisogno. Se è urgente la richiamo io."
     ),
     Variant.new(
       slug: "warm",
       label: "Warm, friendly",
-      text: "Ciao! Grazie per aver chiamato. Adesso non posso rispondere, ma se mi dici di cosa hai bisogno ti richiamo volentieri. La mia email è #{EMAIL_PHONETIC}."
+      text: "Ciao! Grazie per aver chiamato. Adesso non posso rispondere, ma se mi dici di cosa hai bisogno ti richiamo volentieri."
     ),
     Variant.new(
-      slug: "email_first",
-      label: "Email-first",
-      text: "Salve, sono impegnato. Per la maggior parte delle richieste è più veloce scrivere a #{EMAIL_PHONETIC}. Se preferisce, lasci pure un messaggio e la richiamerò."
+      slug: "delegate_voicemail",
+      label: "Delegate to voicemail",
+      text: "Salve, sono impegnato. La invito a lasciare un breve messaggio specificando di cosa ha bisogno: la richiamerò quanto prima."
     ),
     Variant.new(
       slug: "bilingual_short",
       label: "Italian + English",
-      text: "Sono impegnato. Lasciate un messaggio o scrivete a #{EMAIL_PHONETIC}. Hi, I'm busy. Please leave a message or write to #{EMAIL_PHONETIC_EN}."
+      text: "Sono impegnato, lasciate un messaggio. Hi, I'm busy, please leave a message."
     )
   ].freeze
 

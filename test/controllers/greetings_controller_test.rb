@@ -5,7 +5,7 @@ class GreetingsControllerTest < ActionDispatch::IntegrationTest
     @slug = "informal_tu"
     @voice = "if_sara"
     @tone = "natural"
-    @path = Rails.root.join("storage/greetings", @slug, @voice, "#{@tone}.wav")
+    @path = GreetingsStorage.path_for(@slug, @voice, @tone)
     FileUtils.mkdir_p(@path.dirname)
     File.binwrite(@path, "RIFF dummy wav data")
   end

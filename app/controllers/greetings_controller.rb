@@ -1,5 +1,4 @@
 class GreetingsController < ApplicationController
-  GREETINGS_ROOT = Rails.root.join("storage", "greetings")
   SLUG_FORMAT = /\A[a-z0-9_]{1,40}\z/
   VOICE_FORMAT = /\A[a-z0-9_]{1,40}\z/
   TONE_FORMAT = /\A[a-z0-9_]{1,40}\z/
@@ -19,7 +18,7 @@ class GreetingsController < ApplicationController
     return head :not_found unless Setting::ALLOWED_VOICES.include?(voice)
     return head :not_found unless GreetingCatalog::TONE_SLUGS.include?(tone)
 
-    path = GREETINGS_ROOT.join(slug, voice, "#{tone}.wav")
+    path = GreetingsStorage.path_for(slug, voice, tone)
     return head :not_found unless path.exist?
 
     send_file path, type: "audio/wav", disposition: :inline
