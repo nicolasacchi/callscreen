@@ -31,10 +31,20 @@ module Admin
     def block_number
       call = Call.find(params[:id])
       contact = Contact.find_or_create_by!(phone: call.from_number)
-      contact.update!(blacklisted: true)
+      contact.update!(blacklisted: true, whitelisted: false)
       call.update!(status: :spam)
       audit("block_number", call, contact_id: contact.id, from: call.from_number)
       redirect_to admin_call_path(call), notice: "Number blocked."
+    end
+
+    # Mark this caller as trusted: future calls from this number bypass the
+    # screening flow entirely and are Dial'd straight to FORWARD_NUMBER.
+    def whitelist_number
+      call = Call.find(params[:id])
+      contact = Contact.find_or_create_by!(phone: call.from_number)
+      contact.update!(whitelisted: true, blacklisted: false)
+      audit("whitelist_number", call, contact_id: contact.id, from: call.from_number)
+      redirect_to admin_call_path(call), notice: "Numero #{call.from_number} aggiunto ai contatti fidati."
     end
 
     private

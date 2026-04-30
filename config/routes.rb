@@ -31,6 +31,7 @@ Rails.application.routes.draw do
         post :mark_spam
         post :mark_legit
         post :block_number
+        post :whitelist_number
       end
     end
     resources :contacts

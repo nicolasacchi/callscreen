@@ -131,7 +131,8 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     post telnyx_voice_url(token: @token),
          params: { CallSid: "vip-call-001", From: vip.phone, To: "+390123456789" }
     assert_response :success
-    assert_match(/<Dial>\+390987654321<\/Dial>/, @response.body)
+    assert_match(/<Dial[^>]*>\+390987654321<\/Dial>/, @response.body)
+    assert_match(/timeout="15"/, @response.body)
     assert_equal "legit", Call.find_by!(call_sid: "vip-call-001").status
   ensure
     ENV.delete("FORWARD_NUMBER")

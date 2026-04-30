@@ -46,6 +46,24 @@ module Admin
 
       contact = Contact.find_by(phone: call.from_number)
       assert contact.blacklisted
+      assert_not contact.whitelisted, "block must clear whitelist flag if it was set"
+    end
+
+    test "whitelist_number marks contact trusted and creates audit log" do
+      call = calls(:screening)
+      contact = Contact.find_by(phone: call.from_number)
+      contact&.update!(blacklisted: true)  # ensure block flag clears
+
+      assert_difference "AuditLog.count", 1 do
+        post whitelist_number_admin_call_url(call)
+      end
+      log = AuditLog.recent.first
+      assert_equal "whitelist_number", log.action
+      assert_equal call.id, log.subject_id
+
+      contact = Contact.find_by(phone: call.from_number)
+      assert contact.whitelisted
+      assert_not contact.blacklisted, "whitelist must clear blacklist flag if it was set"
     end
 
     test "search uses sanitize_sql_like (NEW M9)" do

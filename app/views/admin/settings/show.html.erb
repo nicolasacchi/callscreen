@@ -1,5 +1,30 @@
 <h1>Settings</h1>
 
+<% telnyx_number = Setting.get("telnyx_phone_number") %>
+<% forward_number = ENV["FORWARD_NUMBER"].presence || "(not set)" %>
+<div class="card">
+  <h3>Phone integration</h3>
+  <dl class="detail-grid">
+    <dt>Telnyx number</dt>
+    <dd><%= telnyx_number %> <small style="color: var(--text-muted);">(callers reach this; your published phone)</small></dd>
+    <dt>Forward to (your mobile)</dt>
+    <dd><%= forward_number %> <small style="color: var(--text-muted);">(set via <code>CALLSCREEN_FORWARD_NUMBER</code> in traefik .env)</small></dd>
+  </dl>
+  <p style="margin-top: 0.75rem;">
+    <strong>Carrier-side forwarding (Italy)</strong> — dial these from your mobile to send unanswered/busy/unreachable calls
+    through the screener. <strong>Use conditional only</strong>; unconditional <code>**21*</code> creates a loop with the
+    whitelist Dial-back.
+  </p>
+  <pre style="background: var(--bg); padding: 0.75rem; border-radius: 6px; font-size: 0.8rem;">
+**61*<%= telnyx_number %>**20#    forward when no answer (after 20s)
+**67*<%= telnyx_number %>#        forward when busy
+**62*<%= telnyx_number %>#        forward when unreachable
+##61#                          disable no-answer forward
+##67#                          disable busy forward
+##62#                          disable unreachable forward
+##002#                         disable ALL forwarding (panic button)</pre>
+</div>
+
 <%= form_tag admin_settings_path, method: :patch, class: "card" do %>
   <% @settings.each do |setting| %>
     <div class="form-group">

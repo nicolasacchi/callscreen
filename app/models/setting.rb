@@ -13,7 +13,8 @@ class Setting < ApplicationRecord
     "screening_speech_timeout" => "3",
     "auto_delete_days" => "30",
     "auto_delete_transcripts_days" => "30",
-    "transcription_engine" => "Google"
+    "transcription_engine" => "Google",
+    "telnyx_phone_number" => "+390999000355"
   }.freeze
 
   ALLOWED_TRANSCRIPTION_ENGINES = %w[Google Telnyx Azure Deepgram].freeze
@@ -31,7 +32,8 @@ class Setting < ApplicationRecord
     "greeting_variant" => :validate_greeting_variant,
     "greeting_tone" => :validate_greeting_tone,
     "voicemail_prompt" => :validate_text,
-    "transcription_engine" => :validate_transcription_engine
+    "transcription_engine" => :validate_transcription_engine,
+    "telnyx_phone_number" => :validate_phone_number
   }.freeze
 
   class InvalidValue < ArgumentError; end
@@ -85,6 +87,10 @@ class Setting < ApplicationRecord
 
   def self.validate_greeting_tone(v)
     GreetingCatalog::TONE_SLUGS.include?(v.to_s)
+  end
+
+  def self.validate_phone_number(v)
+    v.to_s.match?(/\A\+?[0-9]{6,15}\z/)
   end
 
   def self.validate_speech_timeout(v)

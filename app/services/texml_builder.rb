@@ -48,7 +48,11 @@ class TexmlBuilder
 
     def forward_call(number)
       build_response do |xml|
-        xml.Dial(number)
+        # timeout=15 must stay BELOW the carrier's no-answer-forward threshold
+        # (typically 20-25s on Italian mobile carriers) so the Dial-back gives
+        # up before the carrier re-forwards the call to the Telnyx number,
+        # which would create a loop.
+        xml.Dial(number, timeout: 15)
       end
     end
 

@@ -45,11 +45,13 @@ class TexmlBuilderTest < ActiveSupport::TestCase
     assert_equal "5", record.attribute("timeout").value
   end
 
-  test "forward_call wraps the number in Dial" do
+  test "forward_call wraps the number in Dial with 15s timeout (loop guard)" do
     xml = TexmlBuilder.forward_call("+390123456789")
     doc = REXML::Document.new(xml)
     dial = REXML::XPath.first(doc, "//Dial")
     assert_equal "+390123456789", dial.text
+    assert_equal "15", dial.attribute("timeout").value,
+                 "Dial timeout MUST be < carrier no-answer threshold (~20s) to avoid forwarding loops"
   end
 
   test "hangup with no phrase emits just Hangup" do

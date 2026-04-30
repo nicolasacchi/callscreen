@@ -71,6 +71,17 @@
   <% unless @call.legit? %>
     <%= button_to "Mark Legit", mark_legit_admin_call_path(@call), class: "btn btn-sm" %>
   <% end %>
-  <%= button_to "Block Number", block_number_admin_call_path(@call), class: "btn btn-danger btn-sm", data: { turbo_confirm: "Block #{@call.from_number}?" } %>
+  <% if @call.contact&.whitelisted? %>
+    <span class="badge badge-legit">✓ Already trusted</span>
+  <% else %>
+    <%= button_to "Whitelist Number", whitelist_number_admin_call_path(@call),
+                  class: "btn btn-sm",
+                  data: { turbo_confirm: "Trust #{@call.from_number}? Future calls will skip screening and ring your phone directly." } %>
+  <% end %>
+  <% if @call.contact&.blacklisted? %>
+    <span class="badge badge-spam">⚑ Already blocked</span>
+  <% else %>
+    <%= button_to "Block Number", block_number_admin_call_path(@call), class: "btn btn-danger btn-sm", data: { turbo_confirm: "Block #{@call.from_number}?" } %>
+  <% end %>
   <%= link_to "Back", admin_calls_path, class: "btn btn-sm" %>
 </div>
