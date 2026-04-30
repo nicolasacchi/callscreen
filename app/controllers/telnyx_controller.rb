@@ -91,6 +91,25 @@ class TelnyxController < ApplicationController
 
     # === Apply policy in priority order ===
 
+    # 0. Per-caller rate limit (within 24h). Whitelisted callers and
+    # railsdav-allowed callers are exempt from this gate so a known good
+    # caller never gets blocked by a high call volume.
+    if rate_limit_exceeded?(contact, tenant: tenant, external: external)
+      limit = tenant.max_calls_per_caller_per_day || 10
+      call.update!(
+        status: :spam,
+        flow_state: "done",
+        ai_classification: {
+          "classification" => "spam",
+          "confidence" => 1.0,
+          "reason" => "Rate limited (more than #{limit} calls in 24h)"
+        }
+      )
+      NotifyJob.perform_later(call.id)
+      cc_client.reject(ccid)
+      return
+    end
+
     # 1. Railsdav (centralized contacts) policy
     if external.matched?
       case external.policy
@@ -380,6 +399,7 @@ class TelnyxController < ApplicationController
     tenant = call.tenant
     call.update!(status: :spam, flow_state: "hanging_up_after_speak")
     NotifyJob.perform_later(call.id)
+    auto_blacklist_if_pattern_match(call)
     audio = greeting_audio_url_for(tenant, slug: phrase)
     if audio
       cc_client.playback_start(call.call_control_id, audio_url: audio)
@@ -388,6 +408,48 @@ class TelnyxController < ApplicationController
         payload: GreetingCatalog::SYSTEM_PHRASES[phrase] || "Arrivederci.",
         voice: "alice", language: tenant.greeting_language)
     end
+  end
+
+  # === Abuse defenses ===
+
+  def rate_limit_exceeded?(contact, tenant:, external:)
+    # Whitelisted contacts (operator override) and railsdav-allowed
+    # contacts are exempt — they're known-good callers.
+    return false if contact.whitelisted?
+    return false if external.matched? && external.policy == "allow"
+    limit = (tenant.max_calls_per_caller_per_day || 10).to_i
+    return false if limit <= 0
+    contact.recent_calls_count(within: 24.hours) > limit
+  end
+
+  def auto_blacklist_if_pattern_match(call)
+    tenant  = call.tenant
+    contact = call.contact
+    return unless contact
+    return if contact.blacklisted?  # already blocked
+    return if contact.whitelisted?  # operator-trusted
+
+    threshold = (tenant.auto_blacklist_threshold || 3).to_i
+    window    = (tenant.auto_blacklist_window_days || 7).to_i
+    return if threshold <= 0 || window <= 0
+
+    count = contact.recent_spam_count(within: window.days)
+    return if count < threshold
+
+    contact.update!(blacklisted: true)
+    AuditLog.create!(
+      actor: nil,
+      tenant: tenant,
+      action: "auto_blacklist",
+      subject_type: "Contact",
+      subject_id: contact.id,
+      metadata: {
+        from: call.from_number,
+        spam_count: count,
+        window_days: window,
+        threshold: threshold
+      }
+    )
   end
 
   def forward_or_record(call, tenant)
