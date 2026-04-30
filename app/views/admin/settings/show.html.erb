@@ -20,6 +20,14 @@
             <%= current.text %>
           </small>
         <% end %>
+      <% elsif setting.key == "greeting_tone" %>
+        <select name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>">
+          <% GreetingCatalog::TONES.each do |slug, info| %>
+            <option value="<%= slug %>" <%= "selected" if setting.value == slug %>>
+              <%= info[:label] %>
+            </option>
+          <% end %>
+        </select>
       <% elsif setting.key == "greeting_language" %>
         <select name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>">
           <% [["Italian", "it-IT"], ["English", "en-US"], ["French", "fr-FR"], ["German", "de-DE"], ["Spanish", "es-ES"]].each do |label, val| %>
@@ -28,15 +36,18 @@
         </select>
       <% elsif setting.key == "greeting_voice" %>
         <select name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>">
+          <% current_variant = Setting.get("greeting_variant").to_s %>
+          <% current_tone = Setting.get("greeting_tone").to_s %>
           <% Setting::ALLOWED_VOICES.each do |v| %>
-            <% rendered = (Rails.root.join("storage/greetings", Setting.get("greeting_variant").to_s, "#{v}.wav").exist?) %>
+            <% label = GreetingCatalog::VOICES[v] || v %>
+            <% rendered = Rails.root.join("storage/greetings", current_variant, v, "#{current_tone}.wav").exist? %>
             <option value="<%= v %>" <%= "selected" if setting.value == v %>>
-              <%= v %><%= rendered ? " ✓" : "" %>
+              <%= label %><%= rendered ? " ✓" : "" %>
             </option>
           <% end %>
         </select>
         <small style="display: block; margin-top: 0.25rem; color: var(--text-muted);">
-          ✓ = pre-rendered audio available for current variant; otherwise falls back to Say(alice).
+          ✓ = pre-rendered audio for the currently selected phrase + tone. Otherwise the call falls back to Telnyx's built-in voice.
         </small>
       <% elsif setting.key == "transcription_engine" %>
         <select name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>">

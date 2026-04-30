@@ -10,11 +10,12 @@ Rails.application.routes.draw do
   # Authenticated recording playback
   get "recordings/:id", to: "recordings#show", as: :recording
 
-  # Public greeting audio (Telnyx fetches these to <Play> in the call)
-  get "greetings/:slug/:voice.wav",
+  # Public greeting audio (Telnyx fetches these to <Play> in the call).
+  # Three-axis path: phrase × voice × tone.
+  get "greetings/:slug/:voice/:tone.wav",
       to: "greetings#show",
       as: :greeting,
-      constraints: { slug: /[a-z0-9_]+/, voice: /[a-z0-9_]+/ }
+      constraints: { slug: /[a-z0-9_]+/, voice: /[a-z0-9_]+/, tone: /[a-z0-9_]+/ }
 
   # Devise admin auth
   devise_for :admin_users, path: "admin", path_names: {

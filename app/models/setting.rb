@@ -4,6 +4,7 @@ class Setting < ApplicationRecord
   DEFAULTS = {
     "greeting_text" => "Buongiorno. Questa chiamata potrebbe essere registrata. Chi parla e qual e' il motivo della chiamata?",
     "greeting_variant" => "informal_tu",
+    "greeting_tone" => "natural",
     "greeting_language" => "it-IT",
     "greeting_voice" => "if_sara",
     "voicemail_prompt" => "Per favore, lasci un messaggio dopo il segnale acustico.",
@@ -28,6 +29,7 @@ class Setting < ApplicationRecord
     "screening_speech_timeout" => :validate_speech_timeout,
     "greeting_text" => :validate_text,
     "greeting_variant" => :validate_greeting_variant,
+    "greeting_tone" => :validate_greeting_tone,
     "voicemail_prompt" => :validate_text,
     "transcription_engine" => :validate_transcription_engine
   }.freeze
@@ -79,6 +81,10 @@ class Setting < ApplicationRecord
 
   def self.validate_greeting_variant(v)
     GreetingCatalog::SLUGS.include?(v.to_s)
+  end
+
+  def self.validate_greeting_tone(v)
+    GreetingCatalog::TONE_SLUGS.include?(v.to_s)
   end
 
   def self.validate_speech_timeout(v)

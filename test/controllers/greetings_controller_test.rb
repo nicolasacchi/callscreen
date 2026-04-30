@@ -4,7 +4,8 @@ class GreetingsControllerTest < ActionDispatch::IntegrationTest
   setup do
     @slug = "informal_tu"
     @voice = "if_sara"
-    @path = Rails.root.join("storage/greetings", @slug, "#{@voice}.wav")
+    @tone = "natural"
+    @path = Rails.root.join("storage/greetings", @slug, @voice, "#{@tone}.wav")
     FileUtils.mkdir_p(@path.dirname)
     File.binwrite(@path, "RIFF dummy wav data")
   end
@@ -13,25 +14,30 @@ class GreetingsControllerTest < ActionDispatch::IntegrationTest
     FileUtils.rm_f(@path)
   end
 
-  test "serves the audio file when slug + voice + file exist" do
-    get greeting_url(slug: @slug, voice: @voice)
+  test "serves the audio file when slug + voice + tone + file exist" do
+    get greeting_url(slug: @slug, voice: @voice, tone: @tone)
     assert_response :success
     assert_equal "audio/wav", @response.media_type
   end
 
   test "returns 404 when the audio file is missing" do
     FileUtils.rm_f(@path)
-    get greeting_url(slug: @slug, voice: @voice)
+    get greeting_url(slug: @slug, voice: @voice, tone: @tone)
     assert_response :not_found
   end
 
   test "returns 404 when slug is not in the catalog" do
-    get "/greetings/not_a_slug/#{@voice}.wav"
+    get "/greetings/not_a_slug/#{@voice}/#{@tone}.wav"
     assert_response :not_found
   end
 
   test "returns 404 when voice is not in the allowlist" do
-    get "/greetings/#{@slug}/Polly.Carla.wav"
+    get "/greetings/#{@slug}/Polly.Carla/#{@tone}.wav"
+    assert_response :not_found
+  end
+
+  test "returns 404 when tone is not in the catalog" do
+    get "/greetings/#{@slug}/#{@voice}/lightning.wav"
     assert_response :not_found
   end
 end

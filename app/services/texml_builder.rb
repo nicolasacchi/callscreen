@@ -6,6 +6,7 @@ class TexmlBuilder
       language = Setting.get("greeting_language")
       voice = Setting.get("greeting_voice")
       slug = Setting.get("greeting_variant")
+      tone = Setting.get("greeting_tone")
       speech_timeout = Setting.get("screening_speech_timeout")
       engine = Setting.get("transcription_engine")
 
@@ -19,7 +20,7 @@ class TexmlBuilder
           action: action_url,
           method: "POST"
         ) do
-          render_greeting(xml, slug: slug, voice: voice, language: language)
+          render_greeting(xml, slug: slug, voice: voice, tone: tone, language: language)
         end
         xml.Say("Non ho ricevuto risposta. Arrivederci.", voice: "alice", language: language)
         xml.Hangup
@@ -69,25 +70,26 @@ class TexmlBuilder
 
     private
 
-    def render_greeting(xml, slug:, voice:, language:)
-      audio_path = greeting_audio_path(slug, voice)
+    def render_greeting(xml, slug:, voice:, tone:, language:)
+      audio_path = greeting_audio_path(slug, voice, tone)
       if audio_path&.exist?
-        xml.Play(greeting_audio_url(slug, voice))
+        xml.Play(greeting_audio_url(slug, voice, tone))
       else
         text = GreetingCatalog.text_for(slug) || Setting.get("greeting_text")
         xml.Say(text, voice: "alice", language: language)
       end
     end
 
-    def greeting_audio_path(slug, voice)
+    def greeting_audio_path(slug, voice, tone)
       return nil unless GreetingCatalog::SLUGS.include?(slug.to_s)
       return nil unless Setting::ALLOWED_VOICES.include?(voice.to_s)
-      Rails.root.join("storage", "greetings", slug.to_s, "#{voice}.wav")
+      return nil unless GreetingCatalog::TONE_SLUGS.include?(tone.to_s)
+      Rails.root.join("storage", "greetings", slug.to_s, voice.to_s, "#{tone}.wav")
     end
 
-    def greeting_audio_url(slug, voice)
+    def greeting_audio_url(slug, voice, tone)
       app_domain = ENV.fetch("APP_DOMAIN", "https://phone.example.com")
-      "#{app_domain}/greetings/#{slug}/#{voice}.wav"
+      "#{app_domain}/greetings/#{slug}/#{voice}/#{tone}.wav"
     end
 
     def build_response

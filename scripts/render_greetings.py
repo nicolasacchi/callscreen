@@ -32,6 +32,12 @@ OUTPUT_ROOT = CALLSCREEN_ROOT / "storage" / "greetings"
 SAMPLE_RATE = 24000
 
 DEFAULT_VOICES = ["if_sara", "im_nicola"]
+# Map tone slug → Kokoro speed multiplier. Keep in sync with
+# GreetingCatalog::TONES on the Ruby side.
+DEFAULT_TONES = {
+    "natural": 1.0,
+    "slow": 0.85,
+}
 
 
 class Variant(NamedTuple):
@@ -86,8 +92,8 @@ def lang_code_for_voice(voice: str) -> str:
     return voice[0] if voice else "a"
 
 
-def render(variant: Variant, voice: str, force: bool) -> bool:
-    out_path = OUTPUT_ROOT / variant.slug / f"{voice}.wav"
+def render(variant: Variant, voice: str, tone: str, speed: float, pipeline_cache: dict, force: bool) -> bool:
+    out_path = OUTPUT_ROOT / variant.slug / voice / f"{tone}.wav"
     if out_path.exists() and not force:
         print(f"  ✓ {out_path.relative_to(CALLSCREEN_ROOT)} (exists)", file=sys.stderr)
         return False
@@ -106,20 +112,22 @@ def render(variant: Variant, voice: str, force: bool) -> bool:
         )
 
     lang = lang_code_for_voice(voice)
-    pipeline = KPipeline(lang_code=lang)
+    if lang not in pipeline_cache:
+        pipeline_cache[lang] = KPipeline(lang_code=lang)
+    pipeline = pipeline_cache[lang]
     voice_tensor = pipeline.load_voice(voice)
 
     pieces: list = []
-    for _gs, _ps, audio in pipeline(variant.text, voice=voice_tensor, speed=1.0):
+    for _gs, _ps, audio in pipeline(variant.text, voice=voice_tensor, speed=speed):
         pieces.append(audio)
     if not pieces:
-        raise RuntimeError(f"No audio generated for {variant.slug} / {voice}")
+        raise RuntimeError(f"No audio generated for {variant.slug} / {voice} / {tone}")
 
     combined = np.concatenate(pieces)
     sf.write(str(out_path), combined, SAMPLE_RATE)
     print(
         f"  → {out_path.relative_to(CALLSCREEN_ROOT)} "
-        f"({len(combined) / SAMPLE_RATE:.1f}s)",
+        f"(speed {speed}, {len(combined) / SAMPLE_RATE:.1f}s)",
         file=sys.stderr,
     )
     return True
@@ -133,11 +141,16 @@ def parse_csv(value: str | None, default: Iterable[str]) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variants", help="Comma-separated slugs to render (default: all)")
+    parser.add_argument("--variants", help="Comma-separated phrase slugs to render (default: all)")
     parser.add_argument(
         "--voices",
         default=",".join(DEFAULT_VOICES),
         help=f"Comma-separated voice ids (default: {','.join(DEFAULT_VOICES)})",
+    )
+    parser.add_argument(
+        "--tones",
+        default=",".join(DEFAULT_TONES.keys()),
+        help=f"Comma-separated tone slugs (default: {','.join(DEFAULT_TONES.keys())})",
     )
     parser.add_argument("--force", action="store_true", help="Re-render even if file exists")
     args = parser.parse_args()
@@ -146,22 +159,30 @@ def main() -> int:
     catalog_by_slug = {v.slug: v for v in catalog}
     requested_slugs = parse_csv(args.variants, [v.slug for v in catalog])
     voices = parse_csv(args.voices, DEFAULT_VOICES)
+    tones = parse_csv(args.tones, list(DEFAULT_TONES.keys()))
 
     unknown = [s for s in requested_slugs if s not in catalog_by_slug]
     if unknown:
         raise SystemExit(f"Unknown variants: {unknown}. Known: {list(catalog_by_slug)}")
+    unknown_tones = [t for t in tones if t not in DEFAULT_TONES]
+    if unknown_tones:
+        raise SystemExit(f"Unknown tones: {unknown_tones}. Known: {list(DEFAULT_TONES)}")
 
+    pipeline_cache: dict = {}
     rendered = 0
     skipped = 0
-    print(f"Rendering {len(requested_slugs)} variants × {len(voices)} voices = "
-          f"{len(requested_slugs) * len(voices)} files into {OUTPUT_ROOT}", file=sys.stderr)
+    total = len(requested_slugs) * len(voices) * len(tones)
+    print(f"Rendering {len(requested_slugs)} phrases × {len(voices)} voices × "
+          f"{len(tones)} tones = {total} files into {OUTPUT_ROOT}", file=sys.stderr)
     for slug in requested_slugs:
         variant = catalog_by_slug[slug]
         for voice in voices:
-            if render(variant, voice, force=args.force):
-                rendered += 1
-            else:
-                skipped += 1
+            for tone in tones:
+                speed = DEFAULT_TONES[tone]
+                if render(variant, voice, tone, speed, pipeline_cache, force=args.force):
+                    rendered += 1
+                else:
+                    skipped += 1
 
     print(f"\nDone: {rendered} rendered, {skipped} skipped (use --force to overwrite)",
           file=sys.stderr)

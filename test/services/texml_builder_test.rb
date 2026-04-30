@@ -76,7 +76,8 @@ class TexmlBuilderTest < ActiveSupport::TestCase
   test "greeting_and_gather emits Play when pre-rendered audio exists" do
     slug = Setting.get("greeting_variant")
     voice = Setting.get("greeting_voice")
-    audio = Rails.root.join("storage/greetings", slug, "#{voice}.wav")
+    tone = Setting.get("greeting_tone")
+    audio = Rails.root.join("storage/greetings", slug, voice, "#{tone}.wav")
     FileUtils.mkdir_p(audio.dirname)
     File.binwrite(audio, "RIFF dummy wav data")
 
@@ -84,7 +85,7 @@ class TexmlBuilderTest < ActiveSupport::TestCase
     doc = REXML::Document.new(xml)
     play = REXML::XPath.first(doc, "//Play")
     assert_not_nil play
-    assert_match %r{/greetings/#{slug}/#{voice}\.wav\z}, play.text
+    assert_match %r{/greetings/#{slug}/#{voice}/#{tone}\.wav\z}, play.text
     # No Say should be emitted inside the Gather when Play is used
     gather_say = REXML::XPath.first(doc, "//Gather/Say")
     assert_nil gather_say
@@ -95,7 +96,8 @@ class TexmlBuilderTest < ActiveSupport::TestCase
   test "greeting_and_gather falls back to Say when audio file is missing" do
     slug = Setting.get("greeting_variant")
     voice = Setting.get("greeting_voice")
-    audio = Rails.root.join("storage/greetings", slug, "#{voice}.wav")
+    tone = Setting.get("greeting_tone")
+    audio = Rails.root.join("storage/greetings", slug, voice, "#{tone}.wav")
     FileUtils.rm_f(audio)
 
     xml = TexmlBuilder.greeting_and_gather(action_url: "https://example.test/screen")

@@ -21,9 +21,26 @@ class GreetingCatalogTest < ActiveSupport::TestCase
 
   test "every variant text contains the phonetic email" do
     GreetingCatalog::VARIANTS.each do |v|
-      assert_includes v.text, "example",
+      assert_includes v.text, "torreblu",
                       "variant #{v.slug} should mention the email"
     end
+  end
+
+  test "voices and tones are descriptive labels" do
+    GreetingCatalog::VOICES.each do |slug, label|
+      assert label.match?(/\A[A-Z]/), "voice label should start with a capital letter for slug #{slug}"
+      assert_not_includes label.downcase, "sara"
+      assert_not_includes label.downcase, "nicola"
+    end
+    GreetingCatalog::TONES.each do |slug, info|
+      assert info[:label].present?
+      assert info[:speed].is_a?(Numeric)
+      assert info[:speed].between?(0.5, 1.5)
+    end
+  end
+
+  test "default tone in Setting::DEFAULTS exists in the catalog" do
+    assert GreetingCatalog::TONE_SLUGS.include?(Setting::DEFAULTS["greeting_tone"])
   end
 
   test "find returns the variant by slug" do

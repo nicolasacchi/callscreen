@@ -24,23 +24,23 @@
     {
       "warning_type": "File Access",
       "warning_code": 16,
-      "fingerprint": "7743a1ca5bae906a403bfb93ad35ee963defdf9a71ad1c1ccff00601a90e448d",
+      "fingerprint": "1dc222232cf4b22c7ccc39619a2aff1c0700521cc3b3c7a2c418a51eafc6e1e0",
       "check_name": "SendFile",
       "message": "Parameter value used in file name",
       "file": "app/controllers/greetings_controller.rb",
-      "line": 21,
+      "line": 25,
       "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
-      "code": "send_file(Rails.root.join(\"storage\", \"greetings\").join(params[:slug].to_s, \"#{:BRAKEMAN_SAFE_LITERAL}.wav\"), :type => \"audio/wav\", :disposition => :inline)",
+      "code": "send_file(Rails.root.join(\"storage\", \"greetings\").join(params[:slug].to_s, :BRAKEMAN_SAFE_LITERAL, \"#{params[:tone].to_s}.wav\"), :type => \"audio/wav\", :disposition => :inline)",
       "render_path": null,
       "location": {
         "type": "method",
         "class": "GreetingsController",
         "method": "show"
       },
-      "user_input": "params[:slug].to_s",
+      "user_input": "params[:tone].to_s",
       "confidence": "Weak",
       "cwe_id": [22],
-      "note": "False positive. params[:slug] and params[:voice] are TRIPLY validated before path construction in GreetingsController#show: (1) regex SLUG_FORMAT/VOICE_FORMAT (lowercase a-z0-9_, max 40 chars, no slash), (2) GreetingCatalog::SLUGS allowlist, (3) Setting::ALLOWED_VOICES allowlist. Path is built from static Rails.root + regex+allowlist'd slug + regex+allowlist'd voice + literal .wav. No traversal possible. Reviewed 2026-04-29."
+      "note": "False positive. params[:slug], params[:voice], params[:tone] are each triply validated before path construction in GreetingsController#show: (1) regex (lowercase a-z0-9_, max 40 chars, no slash), (2) catalog/Setting allowlist (GreetingCatalog::SLUGS / Setting::ALLOWED_VOICES / GreetingCatalog::TONE_SLUGS). Path is built from static Rails.root + three allowlist-validated segments + literal .wav. No traversal possible. Reviewed 2026-04-30."
     }
   ],
   "updated": "2026-04-29 16:30:00 +0200",

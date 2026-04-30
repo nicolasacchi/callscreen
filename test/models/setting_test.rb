@@ -78,6 +78,13 @@ class SettingTest < ActiveSupport::TestCase
     assert_nothing_raised { Setting.set("greeting_variant", "formal_lei") }
   end
 
+  test "set rejects greeting_tone outside the catalog" do
+    assert_raises(Setting::InvalidValue) { Setting.set("greeting_tone", "fast") }
+    assert_raises(Setting::InvalidValue) { Setting.set("greeting_tone", "") }
+    assert_nothing_raised { Setting.set("greeting_tone", "natural") }
+    assert_nothing_raised { Setting.set("greeting_tone", "slow") }
+  end
+
   test "set rejects greeting_text longer than 500 chars" do
     assert_raises(Setting::InvalidValue) { Setting.set("greeting_text", "x" * 501) }
     assert_nothing_raised { Setting.set("greeting_text", "x" * 500) }
