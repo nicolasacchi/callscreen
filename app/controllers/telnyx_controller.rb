@@ -1,22 +1,69 @@
 class TelnyxController < ApplicationController
-  # Telnyx call_control_id format is base64url + ":" version prefix, up to ~150 chars.
-  # Conservatively bound to filename-safe chars + 256 length; no "/" so path traversal
-  # is impossible regardless of what's downstream.
-  CALL_SID_FORMAT = /\A[A-Za-z0-9_:=\-]{1,256}\z/
+  # Telnyx Voice API delivers JSON webhooks describing call events.
+  # We persist a per-Call FSM (`flow_state`) and dispatch on
+  # `data.event_type`. Outbound state changes are issued through the
+  # CallControlClient. All commands are best-effort — we always return
+  # 200 to Telnyx to acknowledge the webhook; recovery uses subsequent
+  # events (call.hangup will fire when a leg drops, etc).
+  #
+  # Routes (config/routes.rb):
+  #   POST /telnyx/voice    — single endpoint for ALL Voice API events
+  #
+  # Tenant resolution order, applied on `call.initiated`:
+  #   1. Tenant.find_by(dedicated_number: payload[:to])
+  #   2. Tenant.find_by(mobile_number: SipHeadersParser.original_called_number(...))
+  #   3. Tenant.default (fallback; call is flagged unattributed)
+
+  CALL_CONTROL_ID_FORMAT = /\A[A-Za-z0-9_:=\-]{1,256}\z/
 
   skip_before_action :verify_authenticity_token
   before_action :verify_telnyx_request
-  before_action :verify_call_sid_format, only: [ :voice ]
 
+  # Single dispatcher route — accepts every Voice API event. Legacy
+  # TeXML routes (/telnyx/voice, /telnyx/screen, /telnyx/clarify,
+  # /telnyx/recording, /telnyx/status) all alias to here so a deploy that
+  # half-rolls-back to TeXML doesn't 404.
   def voice
-    call_sid = params[:CallSid].to_s
-    from = PhoneNumberNormalizer.normalize(params[:From])
-    to = params[:To]
+    payload = request_payload
+    event   = payload.dig("data", "event_type")
+    case event
+    when "call.initiated"          then handle_initiated(payload)
+    when "call.answered"           then handle_answered(payload)
+    when "call.gather.ended"       then handle_gather_ended(payload)
+    when "call.recording.saved"    then handle_recording_saved(payload)
+    when "call.playback.ended", "call.speak.ended"
+                                   then handle_playback_or_speak_ended(payload)
+    when "call.hangup"             then handle_hangup(payload)
+    else
+      Rails.logger.info("TelnyxController: ignoring event_type=#{event.inspect}")
+    end
+    head :ok
+  rescue StandardError => e
+    Rails.logger.error("TelnyxController error: #{e.class}: #{e.message}\n#{e.backtrace.first(8).join("\n")}")
+    Sentry.capture_exception(e) if defined?(Sentry)
+    head :ok
+  end
 
-    # Until Phase 4 (Call Control + History-Info routing), every TeXML call
-    # is attributed to the default tenant. Phase 4 adds the per-call tenant
-    # resolution via sip_headers["History-Info"].
-    tenant = Tenant.default || raise("no default tenant configured")
+  # Aliases — all five legacy routes funnel into the same dispatcher.
+  alias_method :screen,    :voice
+  alias_method :clarify,   :voice
+  alias_method :recording, :voice
+  alias_method :status,    :voice
+
+  private
+
+  # === Event handlers ===
+
+  def handle_initiated(payload)
+    p   = payload.dig("data", "payload") || {}
+    ccid = p["call_control_id"].to_s
+    return unless ccid.match?(CALL_CONTROL_ID_FORMAT)
+
+    from = PhoneNumberNormalizer.normalize(p["from"])
+    to   = p["to"].to_s
+    sip_headers = p["sip_headers"]
+
+    tenant = resolve_tenant(to: to, sip_headers: sip_headers)
 
     external = RailsdavContactsClient.lookup(from, username: tenant.railsdav_username)
 
@@ -25,23 +72,32 @@ class TelnyxController < ApplicationController
     contact.name = external.name if external.matched? && contact.name.blank? && external.name.present?
     contact.save!
 
-    call = Call.create!(
+    call_attrs = {
       tenant: tenant,
-      call_sid: call_sid,
+      call_sid: ccid,
+      call_control_id: ccid,
       from_number: from,
       to_number: to,
       status: :initiated,
-      contact: contact
-    )
+      flow_state: "initiated",
+      contact: contact,
+      unattributed: tenant_unattributed?(tenant, to: to, sip_headers: sip_headers)
+    }
 
-    # Apply railsdav policy first: it's the centrally-managed source of truth.
-    # Local blacklisted/whitelisted flags below remain a per-operator override
-    # for the "screen" / no-match cases.
+    # Idempotent: if Telnyx retries call.initiated we should not duplicate.
+    call = Call.find_or_initialize_by(call_control_id: ccid)
+    call.assign_attributes(call_attrs) if call.new_record?
+    call.save!
+
+    # === Apply policy in priority order ===
+
+    # 1. Railsdav (centralized contacts) policy
     if external.matched?
       case external.policy
       when "block"
         call.update!(
           status: :spam,
+          flow_state: "done",
           ai_classification: {
             "classification" => "spam",
             "confidence" => 1.0,
@@ -49,120 +105,196 @@ class TelnyxController < ApplicationController
           }
         )
         NotifyJob.perform_later(call.id)
-        render_texml TexmlBuilder.reject
+        cc_client.reject(ccid)
         return
       when "allow"
-        call.update!(status: :legit)
+        call.update!(status: :legit, flow_state: "transfer_dialing")
         forward_or_record(call, tenant)
         return
       end
     end
 
+    # 2. Local blacklist (operator override)
     if contact.blacklisted?
-      call.update!(status: :spam)
-      render_texml TexmlBuilder.reject
+      call.update!(status: :spam, flow_state: "done")
+      cc_client.reject(ccid)
       return
     end
 
+    # 3. Local whitelist (operator override)
     if contact.whitelisted?
-      call.update!(status: :legit)
+      call.update!(status: :legit, flow_state: "transfer_dialing")
       forward_or_record(call, tenant)
       return
     end
 
-    # Check rules against phone number — scoped to this tenant
+    # 4. Per-tenant rules (prefix/regex)
     rule_match = tenant.rules.active.find { |r| r.matches_number?(from) }
     if rule_match
       rule_match.increment!(:hit_count)
       if rule_match.action_block?
-        call.update!(status: :spam)
+        call.update!(status: :spam, flow_state: "done")
         NotifyJob.perform_later(call.id)
-        render_texml TexmlBuilder.reject
+        cc_client.reject(ccid)
         return
       elsif rule_match.action_allow?
-        call.update!(status: :legit)
+        call.update!(status: :legit, flow_state: "transfer_dialing")
         forward_or_record(call, tenant)
         return
       end
     end
 
-    # Default: screen the call
-    call.update!(status: :screening)
-    render_texml TexmlBuilder.greeting_and_gather(action_url: webhook_url(:screen), tenant: tenant)
+    # 5. Default — answer and proceed to greeting
+    call.update!(status: :screening, flow_state: "answered")
+    cc_client.answer(ccid)
   end
 
-  def screen
-    call_sid = params[:CallSid]
-    speech_result = params[:SpeechResult]
-    call = Call.find_by!(call_sid: call_sid)
+  def handle_answered(payload)
+    p   = payload.dig("data", "payload") || {}
+    ccid = p["call_control_id"]
+    call = Call.find_by(call_control_id: ccid)
+    return unless call
+
+    case call.flow_state
+    when "answered"
+      # Greeting + first gather
+      call.update!(flow_state: "awaiting_speech")
+      issue_greeting_gather(call)
+    when "transfer_dialing"
+      # Allow path actually triggers transfer immediately on initiated; nothing to do here.
+    end
+  end
+
+  def handle_gather_ended(payload)
+    p   = payload.dig("data", "payload") || {}
+    ccid = p["call_control_id"]
+    call = Call.find_by(call_control_id: ccid)
+    return unless call
+
+    transcript = p.dig("transcription", "transcript").to_s
+
+    case call.flow_state
+    when "awaiting_speech"
+      classify_first_pass(call, transcript)
+    when "clarification_awaiting_speech"
+      classify_clarification_pass(call, transcript)
+    end
+  end
+
+  def handle_recording_saved(payload)
+    p    = payload.dig("data", "payload") || {}
+    ccid = p["call_control_id"]
+    url  = p["recording_urls"]&.values&.first || p["recording_url"]
+    call = Call.find_by(call_control_id: ccid)
+    return unless call
+
+    if call.recording_url.blank?
+      call.update!(
+        recording_url: url,
+        duration_seconds: p["duration_seconds"].to_i,
+        status: :completed,
+        flow_state: "done"
+      )
+      TranscribeRecordingJob.perform_later(call.id)
+    end
+    cc_client.hangup(ccid)
+  end
+
+  def handle_playback_or_speak_ended(payload)
+    p    = payload.dig("data", "payload") || {}
+    ccid = p["call_control_id"]
+    call = Call.find_by(call_control_id: ccid)
+    return unless call
+
+    if call.flow_state == "hanging_up_after_speak"
+      call.update!(flow_state: "done")
+      cc_client.hangup(ccid)
+    end
+  end
+
+  def handle_hangup(payload)
+    p    = payload.dig("data", "payload") || {}
+    ccid = p["call_control_id"]
+    call = Call.find_by(call_control_id: ccid)
+    return unless call
+
+    call.update!(flow_state: "done") unless call.flow_state == "done"
+    if call.contact.present?
+      call.contact.update!(last_called_at: Time.current)
+    end
+  end
+
+  # === Tenant resolution ===
+
+  def resolve_tenant(to:, sip_headers:)
+    by_dedicated = Tenant.find_by(dedicated_number: to.to_s)
+    return by_dedicated if by_dedicated
+
+    if (orig = SipHeadersParser.original_called_number(sip_headers))
+      by_mobile = Tenant.find_by(mobile_number: orig)
+      return by_mobile if by_mobile
+    end
+
+    Tenant.default
+  end
+
+  def tenant_unattributed?(tenant, to:, sip_headers:)
+    # If we matched by dedicated_number or by History-Info that's an
+    # attributed call. Only the fallback to default counts as unattributed.
+    !(tenant.dedicated_number.present? && tenant.dedicated_number == to.to_s) &&
+      SipHeadersParser.original_called_number(sip_headers) != tenant.mobile_number
+  end
+
+  # === Classification ===
+
+  def classify_first_pass(call, transcript)
     tenant = call.tenant
+    call.update!(screening_transcript: transcript)
 
-    call.update!(screening_transcript: speech_result)
-
-    if speech_result.blank?
-      call.update!(status: :spam)
-      NotifyJob.perform_later(call.id)
-      render_texml TexmlBuilder.hangup(phrase: "goodbye_short", tenant: tenant)
+    if transcript.blank?
+      finish_with_spam(call, phrase: "goodbye_short")
       return
     end
 
-    # Check keyword rules against transcript — per-tenant
-    keyword_rule = tenant.rules.active.keyword.find { |r| r.matches_transcript?(speech_result) }
+    # Keyword rules
+    keyword_rule = tenant.rules.active.keyword.find { |r| r.matches_transcript?(transcript) }
     if keyword_rule
       keyword_rule.increment!(:hit_count)
       if keyword_rule.action_block?
-        call.update!(status: :spam, ai_classification: { "classification" => "spam", "confidence" => 1.0, "reason" => "Keyword rule: #{keyword_rule.value}" })
-        NotifyJob.perform_later(call.id)
-        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam", tenant: tenant)
+        call.update!(
+          ai_classification: { "classification" => "spam", "confidence" => 1.0, "reason" => "Keyword rule: #{keyword_rule.value}" }
+        )
+        finish_with_spam(call, phrase: "goodbye_spam")
         return
       end
     end
 
-    # AI classification — per-tenant sensitivity
     sensitivity = tenant.spam_sensitivity || Setting.get("spam_sensitivity").to_f
-    result = SpamClassifier.new(speech_result, from_number: call.from_number, sensitivity: sensitivity).classify
+    result = SpamClassifier.new(transcript, from_number: call.from_number, sensitivity: sensitivity).classify
     call.update!(ai_classification: result)
 
     case result["classification"]
     when "spam"
       if result["confidence"].to_f >= sensitivity
-        call.update!(status: :spam)
-        NotifyJob.perform_later(call.id)
-        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam", tenant: tenant)
+        finish_with_spam(call, phrase: "goodbye_spam")
       else
-        # Low-confidence spam → ask one clarifying question before voicemail.
-        call.update!(status: :uncertain)
-        render_texml TexmlBuilder.clarify_and_gather(action_url: webhook_url(:clarify), tenant: tenant)
+        ask_clarification(call)
       end
     when "legit"
-      # Voicemail path: TranscribeRecordingJob will notify with the full message
-      # once Whisper finishes. No early NotifyJob here — that produced duplicate
-      # ntfy pushes per call.
       call.update!(status: :legit)
-      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording), tenant: tenant)
+      start_voicemail(call)
     else
-      # Explicit uncertain → ask one clarifying question.
-      call.update!(status: :uncertain)
-      render_texml TexmlBuilder.clarify_and_gather(action_url: webhook_url(:clarify), tenant: tenant)
+      ask_clarification(call)
     end
   end
 
-  # Second-turn handler invoked after clarify_and_gather. We re-classify
-  # using both the original screening transcript and the caller's response
-  # to the clarification prompt, then route definitively.
-  def clarify
-    call_sid = params[:CallSid]
-    speech_result = params[:SpeechResult]
-    call = Call.find_by!(call_sid: call_sid)
+  def classify_clarification_pass(call, transcript)
     tenant = call.tenant
-
-    combined = "#{call.screening_transcript}\n[Clarification]: #{speech_result}".strip
+    combined = "#{call.screening_transcript}\n[Clarification]: #{transcript}".strip
     call.update!(screening_transcript: combined)
 
-    if speech_result.blank?
-      call.update!(status: :spam)
-      NotifyJob.perform_later(call.id)
-      render_texml TexmlBuilder.hangup(phrase: "goodbye_short", tenant: tenant)
+    if transcript.blank?
+      finish_with_spam(call, phrase: "goodbye_short")
       return
     end
 
@@ -170,67 +302,129 @@ class TelnyxController < ApplicationController
     result = SpamClassifier.new(combined, from_number: call.from_number, sensitivity: sensitivity).classify
     call.update!(ai_classification: result)
 
-    # All voicemail paths defer notification to TranscribeRecordingJob so the
-    # operator gets a SINGLE ntfy push per call with the full transcript.
-    # Only the high-confidence-spam hangup path notifies here, because there's
-    # no recording follow-up for it.
     case result["classification"]
     when "spam"
       if result["confidence"].to_f >= sensitivity
-        call.update!(status: :spam)
-        NotifyJob.perform_later(call.id)
-        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam", tenant: tenant)
+        finish_with_spam(call, phrase: "goodbye_spam")
       else
         call.update!(status: :uncertain)
-        render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording), tenant: tenant)
+        start_voicemail(call)
       end
     when "legit"
       call.update!(status: :legit)
-      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording), tenant: tenant)
+      start_voicemail(call)
     else
       call.update!(status: :uncertain)
-      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording), tenant: tenant)
+      start_voicemail(call)
     end
   end
 
-  def recording
-    call_sid = params[:CallSid]
-    recording_url = params[:RecordingUrl]
-    recording_duration = params[:RecordingDuration]
+  # === Outbound command shortcuts ===
 
-    call = Call.find_by!(call_sid: call_sid)
+  def issue_greeting_gather(call)
+    tenant = call.tenant
+    audio  = greeting_audio_url_for(tenant, slug: tenant.greeting_variant)
 
-    # <Record> action and recordingStatusCallback both fire to /telnyx/recording
-    # for the same recording. Dedupe by remembering whether we've already
-    # processed this call's recording — first webhook wins, second is a no-op.
-    if call.recording_url.blank?
-      call.update!(
-        recording_url: recording_url,
-        duration_seconds: recording_duration.to_i,
-        status: :completed
+    if audio
+      cc_client.gather_using_audio(call.call_control_id,
+        audio_url: audio,
+        language:  tenant.greeting_language,
+        transcription_engine: Setting.get("transcription_engine"),
+        total_timeout_secs: 30
       )
-      TranscribeRecordingJob.perform_later(call.id)
+    else
+      cc_client.gather_using_speak(call.call_control_id,
+        payload:  GreetingCatalog.text_for(tenant.greeting_variant) || tenant.greeting_text || Setting.get("greeting_text"),
+        voice:    "alice",
+        language: tenant.greeting_language,
+        transcription_engine: Setting.get("transcription_engine"),
+        total_timeout_secs: 30
+      )
     end
-
-    render_texml TexmlBuilder.hangup(tenant: call.tenant)
   end
 
-  def status
-    call_sid = params[:CallSid]
-    call = Call.find_by(call_sid: call_sid)
-    return head :ok unless call
-
-    call_duration = params[:CallDuration]
-    call.update!(duration_seconds: call_duration.to_i) if call_duration.present?
-
-    if call.contact.present?
-      call.contact.update!(last_called_at: Time.current)
+  def ask_clarification(call)
+    tenant = call.tenant
+    call.update!(status: :uncertain, flow_state: "clarification_awaiting_speech")
+    audio = greeting_audio_url_for(tenant, slug: "clarify")
+    if audio
+      cc_client.gather_using_audio(call.call_control_id,
+        audio_url: audio, language: tenant.greeting_language,
+        transcription_engine: Setting.get("transcription_engine"))
+    else
+      cc_client.gather_using_speak(call.call_control_id,
+        payload: GreetingCatalog::SYSTEM_PHRASES["clarify"],
+        voice: "alice", language: tenant.greeting_language,
+        transcription_engine: Setting.get("transcription_engine"))
     end
-
-    head :ok
   end
 
-  private
+  def start_voicemail(call)
+    tenant = call.tenant
+    call.update!(flow_state: "voicemail_prompt_playing", status: call.status)
+    audio = greeting_audio_url_for(tenant, slug: "voicemail_prompt")
+    if audio
+      cc_client.playback_start(call.call_control_id, audio_url: audio)
+    else
+      cc_client.speak(call.call_control_id,
+        payload: GreetingCatalog::SYSTEM_PHRASES["voicemail_prompt"],
+        voice: "alice", language: tenant.greeting_language)
+    end
+    cc_client.record_start(call.call_control_id,
+      max_length: tenant.max_recording_seconds || 120,
+      play_beep: true)
+    call.update!(flow_state: "recording", status: :recording)
+  end
+
+  def finish_with_spam(call, phrase:)
+    tenant = call.tenant
+    call.update!(status: :spam, flow_state: "hanging_up_after_speak")
+    NotifyJob.perform_later(call.id)
+    audio = greeting_audio_url_for(tenant, slug: phrase)
+    if audio
+      cc_client.playback_start(call.call_control_id, audio_url: audio)
+    else
+      cc_client.speak(call.call_control_id,
+        payload: GreetingCatalog::SYSTEM_PHRASES[phrase] || "Arrivederci.",
+        voice: "alice", language: tenant.greeting_language)
+    end
+  end
+
+  def forward_or_record(call, tenant)
+    target = tenant.forward_back_number.presence || ENV["FORWARD_NUMBER"]
+    if target.present?
+      call.update!(flow_state: "transfer_dialing")
+      cc_client.transfer(call.call_control_id, to: target, timeout_secs: 15)
+    else
+      start_voicemail(call)
+    end
+  end
+
+  def greeting_audio_url_for(tenant, slug:)
+    return nil unless slug
+    return nil unless GreetingCatalog::ALL_SLUGS.include?(slug.to_s)
+    voice = tenant.greeting_voice
+    tone  = tenant.greeting_tone
+    return nil unless Setting::ALLOWED_VOICES.include?(voice.to_s)
+    return nil unless GreetingCatalog::TONE_SLUGS.include?(tone.to_s)
+    return nil unless GreetingsStorage.path_for(slug, voice, tone).exist?
+    "#{ENV.fetch('APP_DOMAIN', 'https://phone.example.com')}/greetings/#{slug}/#{voice}/#{tone}.wav"
+  end
+
+  def cc_client
+    @cc_client ||= CallControlClient.new
+  end
+
+  # === Webhook authentication ===
+
+  def request_payload
+    request.body.rewind
+    raw = request.body.read
+    return {} if raw.empty?
+    JSON.parse(raw)
+  rescue JSON::ParserError
+    {}
+  end
 
   def verify_telnyx_request
     return if signature_valid?
@@ -257,35 +451,5 @@ class TelnyxController < ApplicationController
 
   def fallback_enabled?
     ENV["WEBHOOK_TOKEN"].present? && ENV["WEBHOOK_TOKEN_FALLBACK"] != "0"
-  end
-
-  def verify_call_sid_format
-    head :bad_request unless params[:CallSid].to_s.match?(CALL_SID_FORMAT)
-  end
-
-  def forward_or_record(call, tenant)
-    # Per-tenant forward-back number takes priority; fall back to the legacy
-    # FORWARD_NUMBER env so single-tenant installs keep working unchanged.
-    forward_number = tenant&.forward_back_number.presence || ENV["FORWARD_NUMBER"]
-    if forward_number.present?
-      render_texml TexmlBuilder.forward_call(forward_number)
-    else
-      call.update!(status: :recording)
-      render_texml TexmlBuilder.record_voicemail(action_url: webhook_url(:recording), tenant: tenant)
-    end
-  end
-
-  def webhook_url(action)
-    app_domain = ENV.fetch("APP_DOMAIN", "https://phone.example.com")
-    base = "#{app_domain}/telnyx/#{action}"
-    if fallback_enabled?
-      "#{base}?token=#{ENV.fetch('WEBHOOK_TOKEN', '')}"
-    else
-      base
-    end
-  end
-
-  def render_texml(xml)
-    render plain: xml, content_type: "text/xml"
   end
 end
