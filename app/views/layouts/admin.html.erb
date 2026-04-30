@@ -109,10 +109,20 @@
         <%= link_to "Calls", admin_calls_path, class: ("active" if controller_path == "admin/calls") %>
         <%= link_to "Contacts", admin_contacts_path, class: ("active" if controller_path == "admin/contacts") %>
         <%= link_to "Rules", admin_rules_path, class: ("active" if controller_path == "admin/rules") %>
-        <%= link_to "Settings", admin_settings_path, class: ("active" if controller_path == "admin/settings") %>
+        <%= link_to "Profile", admin_profile_path, class: ("active" if controller_path == "admin/profiles") %>
+        <% if super_admin? %>
+          <%= link_to "Tenants", admin_tenants_path, class: ("active" if controller_path == "admin/tenants") %>
+          <%= link_to "Settings", admin_settings_path, class: ("active" if controller_path == "admin/settings") %>
+        <% end %>
       </nav>
+      <% if current_tenant %>
+        <div style="padding: 0.5rem 1rem; color: var(--text-muted); font-size: 0.75rem;">
+          Logged in as <strong style="color: var(--text);"><%= current_tenant.display_name %></strong>
+          <% if current_tenant.super_admin? %><br><span style="color: var(--primary);">super-admin</span><% end %>
+        </div>
+      <% end %>
       <div class="logout">
-        <%= link_to "Logout", destroy_admin_user_session_path, data: { turbo_method: :delete }, style: "color: var(--text-muted); font-size: 0.875rem;" %>
+        <%= link_to "Logout", destroy_tenant_session_path, data: { turbo_method: :delete }, style: "color: var(--text-muted); font-size: 0.875rem;" %>
       </div>
     </div>
     <div class="main">

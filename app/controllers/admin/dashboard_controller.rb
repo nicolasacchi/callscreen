@@ -1,28 +1,29 @@
 module Admin
   class DashboardController < BaseController
     def index
-      today_by_status = Call.today.group(:status).count
+      tenant = viewing_tenant
+      today_by_status = tenant.calls.today.group(:status).count
       @stats = {
-        total_today: today_by_status.values.sum,
-        spam_today: today_by_status["spam"] || 0,
-        legit_today: today_by_status["legit"] || 0,
-        recorded_today: Call.today.where.not(recording_url: nil).count,
-        total_all: Call.count,
-        contacts: Contact.count,
-        whitelisted: Contact.whitelisted.count,
-        blacklisted: Contact.blacklisted.count
+        total_today:    today_by_status.values.sum,
+        spam_today:     today_by_status["spam"]  || 0,
+        legit_today:    today_by_status["legit"] || 0,
+        recorded_today: tenant.calls.today.where.not(recording_url: nil).count,
+        total_all:      tenant.calls.count,
+        contacts:       tenant.contacts.count,
+        whitelisted:    tenant.contacts.whitelisted.count,
+        blacklisted:    tenant.contacts.blacklisted.count
       }
 
-      @daily_calls = Call.where("created_at > ?", 30.days.ago)
-                         .group_by_day(:created_at)
-                         .count
+      @daily_calls = tenant.calls.where("created_at > ?", 30.days.ago)
+                                 .group_by_day(:created_at)
+                                 .count
 
-      @daily_spam = Call.spam.where("created_at > ?", 30.days.ago)
-                        .group_by_day(:created_at)
-                        .count
+      @daily_spam = tenant.calls.spam.where("created_at > ?", 30.days.ago)
+                                .group_by_day(:created_at)
+                                .count
 
-      @recent_calls = Call.recent.includes(:contact).limit(15)
-      @recent_audits = AuditLog.recent.includes(:admin_user).limit(10)
+      @recent_calls  = tenant.calls.recent.includes(:contact).limit(15)
+      @recent_audits = AuditLog.where(tenant_id: tenant.id).recent.includes(:actor).limit(10)
     end
   end
 end

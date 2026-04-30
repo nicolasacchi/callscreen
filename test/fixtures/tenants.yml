@@ -1,0 +1,30 @@
+# Tenants ARE Devise users so password hashing is normally done imperatively
+# in setup blocks. The fixtures below define the *non-auth* fields (slug,
+# mobile_number, default_tenant, admin) that controller scoping tests need.
+#
+# Tests that need to log in build a separate Tenant in setup with a real
+# password — these fixtures use placeholder encrypted_password values.
+
+default:
+  email: "default-tenant@example.test"
+  encrypted_password: "x"
+  slug: "default"
+  name: "Default"
+  mobile_number: "+390123456789"
+  forward_back_number: "+393990000001"
+  railsdav_username: "default"
+  default_tenant: true
+  admin: true
+  active: true
+
+other:
+  email: "other-tenant@example.test"
+  encrypted_password: "x"
+  slug: "other"
+  name: "Other Tenant"
+  mobile_number: "+393999999999"
+  forward_back_number: "+393999999999"
+  railsdav_username: "other"
+  default_tenant: false
+  admin: false
+  active: true

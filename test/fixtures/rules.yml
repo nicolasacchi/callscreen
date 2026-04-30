@@ -5,6 +5,7 @@ block_premium:
   active: true
   priority: 100
   description: "Block Italian premium-rate numbers"
+  tenant: default
 
 block_warranty_keyword:
   rule_type: 1 # keyword
@@ -13,6 +14,7 @@ block_warranty_keyword:
   active: true
   priority: 50
   description: "Block calls mentioning warranty"
+  tenant: default
 
 allow_doctor_prefix:
   rule_type: 0 # prefix
@@ -21,3 +23,4 @@ allow_doctor_prefix:
   active: true
   priority: 200
   description: "Allow doctor toll-free range"
+  tenant: default

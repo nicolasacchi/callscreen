@@ -1,9 +1,41 @@
 module Admin
   class BaseController < ApplicationController
-    before_action :authenticate_admin_user!
+    before_action :authenticate_tenant!
+    before_action :set_current_tenant
     layout "admin"
 
+    helper_method :current_tenant, :super_admin?, :viewing_tenant
+
     private
+
+    # The currently logged-in Tenant (Devise resource).
+    def current_tenant
+      @current_tenant ||= warden.user(:tenant)
+    end
+
+    def set_current_tenant
+      Current.tenant = current_tenant
+    end
+
+    def super_admin?
+      current_tenant&.super_admin?
+    end
+
+    # Most admin pages operate on the current tenant's data only. Super-admins
+    # may "view" another tenant by passing ?tenant_id=… on cross-tenant pages.
+    # Per-resource controllers should call `viewing_tenant` to get the active
+    # tenant scope, falling back to current_tenant for non-super-admins.
+    def viewing_tenant
+      if super_admin? && params[:tenant_id].present?
+        Tenant.find(params[:tenant_id])
+      else
+        current_tenant
+      end
+    end
+
+    def require_super_admin!
+      head :forbidden unless super_admin?
+    end
 
     def paginate(scope, per: 25)
       page = [ params[:page].to_i, 1 ].max

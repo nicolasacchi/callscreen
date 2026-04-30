@@ -1,17 +1,28 @@
 unknown:
   phone: "+393331111111"
   calls_count: 0
+  tenant: default
 
 regular:
   phone: "+393332222222"
   name: "Mario Rossi"
   calls_count: 3
+  tenant: default
 
 vip:
   phone: "+393333333333"
   name: "Doctor"
   whitelisted: true
+  tenant: default
 
 spammer:
   phone: "+393334444444"
   blacklisted: true
+  tenant: default
+
+# Same phone number that "unknown" has, but on a DIFFERENT tenant. Used by
+# scoping tests to prove cross-tenant isolation.
+other_unknown:
+  phone: "+393331111111"
+  calls_count: 0
+  tenant: other

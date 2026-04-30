@@ -1,5 +1,10 @@
 module Admin
+  # Global system settings (transcription engine, retention defaults, etc).
+  # Per-tenant settings live on the Tenant model and are managed in
+  # Admin::ProfileController. Only super-admins can change global settings.
   class SettingsController < BaseController
+    before_action :require_super_admin!
+
     def show
       @settings = Setting.all_with_defaults
     end

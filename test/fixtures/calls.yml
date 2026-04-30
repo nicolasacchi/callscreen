@@ -4,6 +4,8 @@ screening:
   to_number: "+390123456789"
   status: 1 # screening
   contact: unknown
+  tenant: default
+  flow_state: "initiated"
 
 spam_completed:
   call_sid: "callsid-spam-002"
@@ -11,6 +13,8 @@ spam_completed:
   to_number: "+390123456789"
   status: 2 # spam
   contact: spammer
+  tenant: default
+  flow_state: "done"
   screening_transcript: "Hi sir we have a special offer for your phone bill"
 
 legit_completed:
@@ -19,4 +23,6 @@ legit_completed:
   to_number: "+390123456789"
   status: 6 # completed
   contact: regular
+  tenant: default
+  flow_state: "done"
   voicemail_transcript: "Ciao Mario, ti chiamo per il pranzo di domenica."

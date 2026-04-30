@@ -2,16 +2,13 @@ require "test_helper"
 
 class RecordingsControllerTest < ActionDispatch::IntegrationTest
   setup do
-    @admin = AdminUser.create!(
-      email: "admin@example.test",
-      password: "test-password-1234",
-      password_confirmation: "test-password-1234"
-    )
-    sign_in @admin
+    @tenant = tenants(:default)
+    @tenant.update!(password: "test-password-1234", password_confirmation: "test-password-1234")
+    sign_in_tenant @tenant
   end
 
   test "redirects to login when unauthenticated" do
-    sign_out @admin
+    sign_out_tenant
     call = calls(:legit_completed)
     get recording_url(call)
     assert_redirected_to "/admin/login"
@@ -52,13 +49,32 @@ class RecordingsControllerTest < ActionDispatch::IntegrationTest
     FileUtils.rm_f(path) if path
   end
 
-  private
+  test "non-super-admin tenant cannot serve another tenant's recording" do
+    sign_out_tenant
+    other = tenants(:other)
+    other.update!(password: "test-password-1234", password_confirmation: "test-password-1234", admin: false)
+    sign_in_tenant other
 
-  def sign_in(admin)
-    post admin_user_session_url, params: { admin_user: { email: admin.email, password: "test-password-1234" } }
+    # The legit_completed call belongs to the default tenant.
+    call = calls(:legit_completed)
+    path = Rails.root.join("storage/recordings/#{call.call_sid}.wav")
+    FileUtils.mkdir_p(path.dirname)
+    File.binwrite(path, "RIFF dummy wav data")
+    call.update!(recording_local_path: path.to_s)
+
+    get recording_url(call)
+    assert_response :not_found
+  ensure
+    FileUtils.rm_f(path) if path
   end
 
-  def sign_out(_admin)
-    delete destroy_admin_user_session_url
+  private
+
+  def sign_in_tenant(tenant)
+    post tenant_session_url, params: { tenant: { email: tenant.email, password: "test-password-1234" } }
+  end
+
+  def sign_out_tenant
+    delete destroy_tenant_session_url
   end
 end

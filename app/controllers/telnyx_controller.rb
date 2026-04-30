@@ -13,14 +13,20 @@ class TelnyxController < ApplicationController
     from = PhoneNumberNormalizer.normalize(params[:From])
     to = params[:To]
 
+    # Until Phase 4 (Call Control + History-Info routing), every TeXML call
+    # is attributed to the default tenant. Phase 4 adds the per-call tenant
+    # resolution via sip_headers["History-Info"].
+    tenant = Tenant.default || raise("no default tenant configured")
+
     external = RailsdavContactsClient.lookup(from)
 
-    contact = Contact.find_or_initialize_by(phone: from)
+    contact = tenant.contacts.find_or_initialize_by(phone: from)
     contact.last_called_at = Time.current
     contact.name = external.name if external.matched? && contact.name.blank? && external.name.present?
     contact.save!
 
     call = Call.create!(
+      tenant: tenant,
       call_sid: call_sid,
       from_number: from,
       to_number: to,

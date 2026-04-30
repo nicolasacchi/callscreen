@@ -1,0 +1,39 @@
+<h1>Tenants</h1>
+
+<div class="toolbar">
+  <%= link_to "New tenant", new_admin_tenant_path, class: "btn btn-primary" %>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Email</th>
+      <th>Mobile</th>
+      <th>Dedicated</th>
+      <th>railsdav user</th>
+      <th>Default</th>
+      <th>Admin</th>
+      <th>Active</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @tenants.each do |t| %>
+      <tr>
+        <td><%= t.display_name %></td>
+        <td><%= t.email %></td>
+        <td><%= t.mobile_number || "—" %></td>
+        <td><%= t.dedicated_number || "—" %></td>
+        <td><%= t.railsdav_username || "—" %></td>
+        <td><%= "✓" if t.default? %></td>
+        <td><%= "✓" if t.super_admin? %></td>
+        <td><%= "✓" if t.active %></td>
+        <td>
+          <%= link_to "View", admin_tenant_path(t), class: "btn btn-sm" %>
+          <%= link_to "Edit", edit_admin_tenant_path(t), class: "btn btn-sm" %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
