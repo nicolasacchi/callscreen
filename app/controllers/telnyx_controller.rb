@@ -80,7 +80,7 @@ class TelnyxController < ApplicationController
     if speech_result.blank?
       call.update!(status: :spam)
       NotifyJob.perform_later(call.id)
-      render_texml TexmlBuilder.hangup(message: "Arrivederci.")
+      render_texml TexmlBuilder.hangup(phrase: "goodbye_short")
       return
     end
 
@@ -91,7 +91,7 @@ class TelnyxController < ApplicationController
       if keyword_rule.action_block?
         call.update!(status: :spam, ai_classification: { "classification" => "spam", "confidence" => 1.0, "reason" => "Keyword rule: #{keyword_rule.value}" })
         NotifyJob.perform_later(call.id)
-        render_texml TexmlBuilder.hangup(message: "Grazie per aver chiamato. Arrivederci.")
+        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam")
         return
       end
     end
@@ -107,7 +107,7 @@ class TelnyxController < ApplicationController
       if result["confidence"].to_f >= sensitivity
         call.update!(status: :spam)
         NotifyJob.perform_later(call.id)
-        render_texml TexmlBuilder.hangup(message: "Grazie per aver chiamato. Arrivederci.")
+        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam")
       else
         # Low-confidence spam → ask one clarifying question before voicemail.
         call.update!(status: :uncertain)
@@ -138,7 +138,7 @@ class TelnyxController < ApplicationController
     if speech_result.blank?
       call.update!(status: :spam)
       NotifyJob.perform_later(call.id)
-      render_texml TexmlBuilder.hangup(message: "Arrivederci.")
+      render_texml TexmlBuilder.hangup(phrase: "goodbye_short")
       return
     end
 
@@ -151,7 +151,7 @@ class TelnyxController < ApplicationController
       if result["confidence"].to_f >= sensitivity
         call.update!(status: :spam)
         NotifyJob.perform_later(call.id)
-        render_texml TexmlBuilder.hangup(message: "Grazie per aver chiamato. Arrivederci.")
+        render_texml TexmlBuilder.hangup(phrase: "goodbye_spam")
       else
         call.update!(status: :uncertain)
         NotifyJob.perform_later(call.id)

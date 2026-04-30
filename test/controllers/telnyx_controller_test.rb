@@ -177,7 +177,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     post telnyx_screen_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "" }
     assert_response :success
-    assert_match(/<Hangup\/>/, @response.body)
+    assert_match(/<Hangup/, @response.body)
     assert_equal "spam", call.reload.status
   end
 
@@ -186,7 +186,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     post telnyx_screen_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "I am calling about your warranty" }
     assert_response :success
-    assert_match(/<Hangup\/>/, @response.body)
+    assert_match(/<Hangup/, @response.body)
     assert_equal "spam", call.reload.status
     assert_equal "Keyword rule: warranty", call.ai_classification["reason"]
   end
@@ -198,7 +198,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     post telnyx_screen_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "Special offer for your phone bill" }
     assert_response :success
-    assert_match(/<Hangup\/>/, @response.body)
+    assert_match(/<Hangup/, @response.body)
     assert_equal "spam", call.reload.status
     assert_equal 0.95, call.ai_classification["confidence"]
   end
@@ -249,7 +249,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     post telnyx_clarify_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "" }
     assert_response :success
-    assert_match(/<Hangup\/>/, @response.body)
+    assert_match(/<Hangup/, @response.body)
     assert_equal "spam", call.reload.status
   end
 
@@ -274,7 +274,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     post telnyx_clarify_url(token: @token),
          params: { CallSid: call.call_sid, SpeechResult: "offerta sul gas e luce" }
     assert_response :success
-    assert_match(/<Hangup\/>/, @response.body)
+    assert_match(/<Hangup/, @response.body)
     assert_equal "spam", call.reload.status
   end
 
@@ -315,7 +315,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
            }
     end
     assert_response :success
-    assert_match(/<Hangup\/>/, @response.body)
+    assert_match(/<Hangup/, @response.body)
     call.reload
     assert_equal "completed", call.status
     assert_equal 42, call.duration_seconds

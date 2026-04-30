@@ -52,25 +52,83 @@ class TexmlBuilderTest < ActiveSupport::TestCase
     assert_equal "+390123456789", dial.text
   end
 
-  test "hangup with message includes Say + Hangup" do
-    xml = TexmlBuilder.hangup(message: "Arrivederci")
+  test "hangup with no phrase emits just Hangup" do
+    xml = TexmlBuilder.hangup
     doc = REXML::Document.new(xml)
-    assert_not_nil REXML::XPath.first(doc, "//Say")
     assert_not_nil REXML::XPath.first(doc, "//Hangup")
+    assert_nil REXML::XPath.first(doc, "//Say"), "no Say should be emitted when phrase is nil"
+    assert_nil REXML::XPath.first(doc, "//Play")
+  end
+
+  test "hangup with phrase falls back to Say with safe alice voice when audio missing" do
+    voice = Setting.get("greeting_voice")
+    tone = Setting.get("greeting_tone")
+    audio = Rails.root.join("storage/greetings/goodbye_spam", voice, "#{tone}.wav")
+    FileUtils.rm_f(audio)
+
+    xml = TexmlBuilder.hangup(phrase: "goodbye_spam")
+    doc = REXML::Document.new(xml)
+    say = REXML::XPath.first(doc, "//Say")
+    assert_not_nil say
+    assert_equal GreetingCatalog::SYSTEM_PHRASES["goodbye_spam"], say.text
+    assert_equal "alice", say.attribute("voice").value
+    assert_not_nil REXML::XPath.first(doc, "//Hangup")
+  end
+
+  test "hangup with phrase emits Play when pre-rendered audio exists" do
+    voice = Setting.get("greeting_voice")
+    tone = Setting.get("greeting_tone")
+    audio = Rails.root.join("storage/greetings/goodbye_spam", voice, "#{tone}.wav")
+    FileUtils.mkdir_p(audio.dirname)
+    File.binwrite(audio, "RIFF dummy")
+
+    xml = TexmlBuilder.hangup(phrase: "goodbye_spam")
+    doc = REXML::Document.new(xml)
+    play = REXML::XPath.first(doc, "//Play")
+    assert_not_nil play
+    assert_match %r{/greetings/goodbye_spam/#{voice}/#{tone}\.wav\z}, play.text
+    assert_nil REXML::XPath.first(doc, "//Say")
+    assert_not_nil REXML::XPath.first(doc, "//Hangup")
+  ensure
+    FileUtils.rm_f(audio) if audio
+  end
+
+  test "record_voicemail emits Play of voicemail_prompt when audio exists" do
+    voice = Setting.get("greeting_voice")
+    tone = Setting.get("greeting_tone")
+    audio = Rails.root.join("storage/greetings/voicemail_prompt", voice, "#{tone}.wav")
+    FileUtils.mkdir_p(audio.dirname)
+    File.binwrite(audio, "RIFF dummy")
+
+    xml = TexmlBuilder.record_voicemail(action_url: "https://example.test/recording")
+    doc = REXML::Document.new(xml)
+    play = REXML::XPath.first(doc, "//Play")
+    assert_not_nil play
+    assert_match %r{/greetings/voicemail_prompt/#{voice}/#{tone}\.wav\z}, play.text
+    assert_not_nil REXML::XPath.first(doc, "//Record")
+  ensure
+    FileUtils.rm_f(audio) if audio
+  end
+
+  test "record_voicemail falls back to Say with safe alice voice when audio missing" do
+    voice = Setting.get("greeting_voice")
+    tone = Setting.get("greeting_tone")
+    audio = Rails.root.join("storage/greetings/voicemail_prompt", voice, "#{tone}.wav")
+    FileUtils.rm_f(audio)
+
+    xml = TexmlBuilder.record_voicemail(action_url: "https://example.test/recording")
+    doc = REXML::Document.new(xml)
+    say = REXML::XPath.first(doc, "//Say")
+    assert_not_nil say
+    assert_equal GreetingCatalog::SYSTEM_PHRASES["voicemail_prompt"], say.text
+    assert_equal "alice", say.attribute("voice").value, "fallback must use Telnyx-safe alice, not Kokoro voice id"
+    assert_not_nil REXML::XPath.first(doc, "//Record")
   end
 
   test "reject contains a Reject element" do
     xml = TexmlBuilder.reject
     doc = REXML::Document.new(xml)
     assert_not_nil REXML::XPath.first(doc, "//Reject")
-  end
-
-  test "escapes < > & in text content via record_voicemail prompt" do
-    Setting.set("voicemail_prompt", "Ciao <stranger> & friend")
-    xml = TexmlBuilder.record_voicemail(action_url: "https://example.test/recording")
-    doc = REXML::Document.new(xml)
-    say_text = REXML::XPath.first(doc, "//Say").text
-    assert_equal "Ciao <stranger> & friend", say_text
   end
 
   test "greeting_and_gather emits Play when pre-rendered audio exists" do

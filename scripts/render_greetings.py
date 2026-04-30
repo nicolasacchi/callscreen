@@ -43,6 +43,10 @@ DEFAULT_TONES = {
 # Keep in sync with GreetingCatalog::SYSTEM_PHRASES on the Ruby side.
 SYSTEM_PHRASES = {
     "clarify": "Scusa, non ho capito bene. Per favore, dimmi più precisamente di cosa hai bisogno e perché stai chiamando.",
+    "voicemail_prompt": "Va bene, dimmi pure quello che ti serve. Ti richiamo io.",
+    "goodbye_spam": "Grazie per aver chiamato. Arrivederci.",
+    "goodbye_short": "Arrivederci.",
+    "no_answer": "Non ho ricevuto risposta. Arrivederci.",
 }
 
 

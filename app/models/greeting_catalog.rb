@@ -62,8 +62,14 @@ class GreetingCatalog
 
   # System phrases — internal use, not selectable from the admin UI.
   # Pre-rendered alongside variants under storage/greetings/<slug>/<voice>/<tone>.wav.
+  # Falls back to Telnyx <Say voice="alice"> with the same text if the audio
+  # file is missing.
   SYSTEM_PHRASES = {
-    "clarify" => "Scusa, non ho capito bene. Per favore, dimmi più precisamente di cosa hai bisogno e perché stai chiamando."
+    "clarify" => "Scusa, non ho capito bene. Per favore, dimmi più precisamente di cosa hai bisogno e perché stai chiamando.",
+    "voicemail_prompt" => "Va bene, dimmi pure quello che ti serve. Ti richiamo io.",
+    "goodbye_spam" => "Grazie per aver chiamato. Arrivederci.",
+    "goodbye_short" => "Arrivederci.",
+    "no_answer" => "Non ho ricevuto risposta. Arrivederci."
   }.freeze
 
   ALL_SLUGS = (SLUGS + SYSTEM_PHRASES.keys).freeze

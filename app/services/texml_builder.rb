@@ -22,7 +22,7 @@ class TexmlBuilder
         ) do
           render_greeting(xml, slug: slug, voice: voice, tone: tone, language: language)
         end
-        xml.Say("Non ho ricevuto risposta. Arrivederci.", voice: "alice", language: language)
+        render_system_phrase(xml, "no_answer", voice: voice, tone: tone, language: language)
         xml.Hangup
       end
     end
@@ -30,11 +30,11 @@ class TexmlBuilder
     def record_voicemail(action_url:)
       language = Setting.get("greeting_language")
       voice = Setting.get("greeting_voice")
-      prompt = Setting.get("voicemail_prompt")
+      tone = Setting.get("greeting_tone")
       max_length = Setting.get("max_recording_seconds")
 
       build_response do |xml|
-        xml.Say(prompt, voice: voice, language: language)
+        render_system_phrase(xml, "voicemail_prompt", voice: voice, tone: tone, language: language)
         xml.Record(
           maxLength: max_length,
           timeout: 5,
@@ -52,12 +52,16 @@ class TexmlBuilder
       end
     end
 
-    def hangup(message: nil)
+    # Hangup with an optional pre-rendered system-phrase preface.
+    #   phrase: a key in GreetingCatalog::SYSTEM_PHRASES (e.g. "goodbye_spam")
+    # When phrase is nil, just emits <Hangup/>.
+    def hangup(phrase: nil)
       language = Setting.get("greeting_language")
       voice = Setting.get("greeting_voice")
+      tone = Setting.get("greeting_tone")
 
       build_response do |xml|
-        xml.Say(message, voice: voice, language: language) if message
+        render_system_phrase(xml, phrase, voice: voice, tone: tone, language: language) if phrase
         xml.Hangup
       end
     end
@@ -98,15 +102,22 @@ class TexmlBuilder
     private
 
     def render_clarification(xml, voice:, tone:, language:)
-      audio_path = greeting_audio_path("clarify", voice, tone)
+      render_system_phrase(xml, "clarify", voice: voice, tone: tone, language: language)
+    end
+
+    # Generic helper: emit <Play> against pre-rendered Kokoro audio if it
+    # exists, otherwise fall back to <Say voice="alice"> with the literal
+    # text (Telnyx's built-in voice — the only voice the system can fall
+    # back on safely without producing English-accented Italian).
+    def render_system_phrase(xml, slug, voice:, tone:, language:)
+      return unless slug
+
+      audio_path = greeting_audio_path(slug, voice, tone)
       if audio_path&.exist?
-        xml.Play(greeting_audio_url("clarify", voice, tone))
+        xml.Play(greeting_audio_url(slug, voice, tone))
       else
-        xml.Say(
-          GreetingCatalog::SYSTEM_PHRASES["clarify"],
-          voice: "alice",
-          language: language
-        )
+        text = GreetingCatalog::SYSTEM_PHRASES[slug.to_s]
+        xml.Say(text, voice: "alice", language: language) if text
       end
     end
 
