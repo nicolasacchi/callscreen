@@ -232,17 +232,37 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   # === call.gather.ended → classification ===
 
-  test "empty transcript on first gather → spam + speak goodbye_short" do
+  test "empty transcript on first gather (call still live) → unknown + voicemail" do
     seed_call(flow_state: "awaiting_speech")
-    speak_stub = stub_action(CCID, :speak)
+    speak_stub  = stub_action(CCID, :speak)         # voicemail prompt
+    record_stub = stub_action(CCID, :record_start)  # start recording
+
+    post_event gather_payload(transcript: "", gather_status: "valid")
+
+    assert_requested speak_stub
+    assert_requested record_stub
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal "recording", call.status
+    assert_equal "recording", call.flow_state
+  end
+
+  test "empty transcript with gather status=call_hangup → unknown + no follow-up audio" do
+    seed_call(flow_state: "awaiting_speech")
+    speak_stub    = stub_action(CCID, :speak)
+    record_stub   = stub_action(CCID, :record_start)
+    playback_stub = stub_action(CCID, :playback_start)
 
     assert_enqueued_jobs 1, only: NotifyJob do
-      post_event gather_payload(transcript: "")
+      post_event gather_payload(transcript: "", gather_status: "call_hangup")
     end
-    assert_requested speak_stub
+    # Crucial: no command issued because Telnyx would 422 on a dead leg.
+    assert_not_requested speak_stub
+    assert_not_requested record_stub
+    assert_not_requested playback_stub
+
     call = Call.find_by!(call_control_id: CCID)
-    assert_equal "spam", call.status
-    assert_equal "hanging_up_after_speak", call.flow_state
+    assert_equal "unknown", call.status
+    assert_equal "done", call.flow_state
   end
 
   test "high-confidence spam classification → goodbye_spam playback or speak" do
@@ -429,10 +449,11 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     event_envelope("call.answered", { "call_control_id" => CCID, "from" => CALLER_FROM, "to" => TENANT_TO })
   end
 
-  def gather_payload(transcript:)
+  def gather_payload(transcript:, gather_status: "valid")
     event_envelope("call.gather.ended", {
       "call_control_id" => CCID,
-      "transcription"   => { "transcript" => transcript, "confidence" => 0.9 }
+      "transcription"   => { "transcript" => transcript, "confidence" => 0.9 },
+      "status"          => gather_status
     })
   end
 

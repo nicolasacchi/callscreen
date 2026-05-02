@@ -191,12 +191,17 @@ class TelnyxController < ApplicationController
     return unless call
 
     transcript = p.dig("transcription", "transcript").to_s
+    # When the gather ends because the caller hung up mid-prompt, Telnyx
+    # sets payload.status="call_hangup" and the leg is already dead. Any
+    # further command (playback, speak, hangup) returns 422 "Call has
+    # already ended". We must short-circuit and not issue follow-up audio.
+    gather_status = p["status"].to_s
 
     case call.flow_state
     when "awaiting_speech"
-      classify_first_pass(call, transcript)
+      classify_first_pass(call, transcript, gather_status: gather_status)
     when "clarification_awaiting_speech"
-      classify_clarification_pass(call, transcript)
+      classify_clarification_pass(call, transcript, gather_status: gather_status)
     end
   end
 
@@ -266,12 +271,12 @@ class TelnyxController < ApplicationController
 
   # === Classification ===
 
-  def classify_first_pass(call, transcript)
+  def classify_first_pass(call, transcript, gather_status: nil)
     tenant = call.tenant
     call.update!(screening_transcript: transcript)
 
     if transcript.blank?
-      finish_with_spam(call, phrase: "goodbye_short")
+      mark_unknown_and_followup(call, gather_status: gather_status)
       return
     end
 
@@ -307,13 +312,13 @@ class TelnyxController < ApplicationController
     end
   end
 
-  def classify_clarification_pass(call, transcript)
+  def classify_clarification_pass(call, transcript, gather_status: nil)
     tenant = call.tenant
     combined = "#{call.screening_transcript}\n[Clarification]: #{transcript}".strip
     call.update!(screening_transcript: combined)
 
     if transcript.blank?
-      finish_with_spam(call, phrase: "goodbye_short")
+      mark_unknown_and_followup(call, gather_status: gather_status)
       return
     end
 
@@ -393,6 +398,29 @@ class TelnyxController < ApplicationController
       max_length: tenant.max_recording_seconds || 120,
       play_beep: true)
     call.update!(flow_state: "recording", status: :recording)
+  end
+
+  # Empty transcript path. The caller didn't say anything during the
+  # gather. Two scenarios:
+  #
+  #   gather_status == "call_hangup": the caller already hung up — the
+  #   leg is dead. Don't try to play any goodbye (Telnyx returns 422
+  #   "Call has already ended"). Just mark the call unknown and notify
+  #   the operator. The follow-up call.hangup event will finalize.
+  #
+  #   gather_status == "valid"/"timeout": the call is still live. Send
+  #   the caller to voicemail rather than hanging up — many people just
+  #   need a beat to gather their thoughts after the prompt. Status is
+  #   :unknown (not :spam) since we have no signal at all about intent.
+  def mark_unknown_and_followup(call, gather_status: nil)
+    if gather_status == "call_hangup"
+      call.update!(status: :unknown, flow_state: "done")
+      NotifyJob.perform_later(call.id)
+      return
+    end
+
+    call.update!(status: :unknown)
+    start_voicemail(call)
   end
 
   def finish_with_spam(call, phrase:)

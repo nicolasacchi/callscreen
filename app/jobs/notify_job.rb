@@ -9,18 +9,32 @@ class NotifyJob < ApplicationJob
     ntfy_url      = tenant&.ntfy_url
     ntfy_priority = tenant&.ntfy_priority
 
+    # Use contact_name in the title — falls back to the raw number when
+    # the contact has no name (or no matching contact). Body always
+    # includes the raw number so the operator sees both.
+    caller = call.contact_name
+
     if call.spam?
       NtfyNotifier.notify(
-        title: "📵 Spam: #{call.from_number}",
+        title: "📵 Spam: #{caller}",
         message: spam_message(call),
         priority: "low",
         tags: [ "no_entry", "spam" ],
         url: ntfy_url,
         default_priority: ntfy_priority
       )
+    elsif call.status == "unknown"
+      NtfyNotifier.notify(
+        title: "❓ Sconosciuto: #{caller}",
+        message: unknown_message(call),
+        priority: "default",
+        tags: [ "phone", "question" ],
+        url: ntfy_url,
+        default_priority: ntfy_priority
+      )
     else
       NtfyNotifier.notify(
-        title: "📞 Da #{call.from_number}",
+        title: "📞 Da #{caller}",
         message: legit_message(call),
         priority: "high",
         tags: [ "phone", call.status ],
@@ -36,6 +50,7 @@ class NotifyJob < ApplicationJob
 
   def spam_message(call)
     parts = []
+    parts << "Da: #{call.from_number}"
     parts << "«#{call.screening_transcript.strip}»" if call.screening_transcript.present?
     parts << ""
     parts << "Motivo: #{call.ai_reason}" if call.ai_reason
@@ -45,10 +60,17 @@ class NotifyJob < ApplicationJob
 
   def legit_message(call)
     parts = []
-    parts << "Contatto: #{call.contact.name}" if call.contact&.name.present?
+    parts << "Da: #{call.from_number}"
     parts << "«#{call.screening_transcript.strip}»" if call.screening_transcript.present?
     parts << ""
     parts << "Classificazione: #{call.status}#{ai_confidence_suffix(call)}"
+    parts.join("\n").strip
+  end
+
+  def unknown_message(call)
+    parts = []
+    parts << "Da: #{call.from_number}"
+    parts << "Il chiamante non ha detto nulla."
     parts.join("\n").strip
   end
 

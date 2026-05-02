@@ -10,7 +10,8 @@ class Call < ApplicationRecord
     uncertain: 4,
     recording: 5,
     completed: 6,
-    failed: 7
+    failed: 7,
+    unknown: 8         # caller said nothing — no enough signal to classify
   }
 
   FLOW_STATES = %w[
