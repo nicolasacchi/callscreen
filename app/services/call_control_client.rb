@@ -43,29 +43,34 @@ class CallControlClient
 
   # Plays an audio file then captures speech with on-the-fly transcription.
   # Telnyx fires call.gather.ended with the transcript on the payload.
+  #
+  # NOTE: Telnyx requires maximum_digits/minimum_digits to be in [1, 128] if
+  # present at all — sending 0 returns a 422. We omit them unless the caller
+  # explicitly opts in (e.g., for an "enter your extension" gather). Defaults
+  # work fine for speech-only because total_timeout_secs ends the capture.
   def gather_using_audio(call_control_id, audio_url:, language: "it-IT",
                          transcription_engine: "Google",
                          valid_digits: nil,
-                         maximum_digits: 0,
-                         minimum_digits: 0,
+                         maximum_digits: nil,
+                         minimum_digits: nil,
                          total_timeout_secs: 30)
     body = {
       audio_url: audio_url,
       language: language,
       transcription: true,
       transcription_engine: transcription_engine,
-      maximum_digits: maximum_digits,
-      minimum_digits: minimum_digits,
       total_timeout_secs: total_timeout_secs
     }
-    body[:valid_digits] = valid_digits if valid_digits
+    body[:valid_digits]   = valid_digits   if valid_digits
+    body[:maximum_digits] = maximum_digits if maximum_digits&.positive?
+    body[:minimum_digits] = minimum_digits if minimum_digits&.positive?
     post(call_control_id, :gather_using_audio, body)
   end
 
   def gather_using_speak(call_control_id, payload:, voice: "alice", language: "it-IT",
                          transcription_engine: "Google",
-                         maximum_digits: 0,
-                         minimum_digits: 0,
+                         maximum_digits: nil,
+                         minimum_digits: nil,
                          total_timeout_secs: 30)
     body = {
       payload: payload,
@@ -74,10 +79,10 @@ class CallControlClient
       payload_type: "text",
       transcription: true,
       transcription_engine: transcription_engine,
-      maximum_digits: maximum_digits,
-      minimum_digits: minimum_digits,
       total_timeout_secs: total_timeout_secs
     }
+    body[:maximum_digits] = maximum_digits if maximum_digits&.positive?
+    body[:minimum_digits] = minimum_digits if minimum_digits&.positive?
     post(call_control_id, :gather_using_speak, body)
   end
 
