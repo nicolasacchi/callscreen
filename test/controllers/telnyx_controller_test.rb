@@ -267,15 +267,32 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   # === call.recording.saved → ScreeningJob (or TranscribeRecordingJob for legacy) ===
 
-  test "recording.saved in screening_recording → enqueue ScreeningJob" do
+  test "recording.saved in screening_recording → enqueue ScreeningJob + immediate goodbye" do
     seed_call(flow_state: "screening_recording")
+    speak_stub = stub_action(CCID, :speak)  # no pre-rendered audio in test
 
     assert_enqueued_jobs 1, only: ScreeningJob do
       post_event recording_saved_payload(url: "https://api.telnyx.com/v2/recordings/abc.wav")
     end
+    # Controller plays a brief goodbye on the still-open leg so the caller
+    # doesn't hear seconds of silence while Whisper runs.
+    assert_requested speak_stub
     call = Call.find_by!(call_control_id: CCID)
     assert_equal "https://api.telnyx.com/v2/recordings/abc.wav", call.recording_url
-    assert_equal "processing", call.flow_state
+    assert_equal "hanging_up_after_speak", call.flow_state
+  end
+
+  test "recording.saved with pre-rendered goodbye uses playback_start" do
+    setup_pre_rendered_greeting("goodbye_spam")
+    seed_call(flow_state: "screening_recording")
+    pb_stub = stub_action(CCID, :playback_start)
+
+    post_event recording_saved_payload(url: "https://x/a.wav")
+
+    assert_requested pb_stub
+    assert_equal "hanging_up_after_speak", Call.find_by!(call_control_id: CCID).flow_state
+  ensure
+    cleanup_greeting_files
   end
 
   test "recording.saved in legacy 'recording' state → enqueue TranscribeRecordingJob + hangup" do
@@ -291,6 +308,7 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   test "recording.saved is idempotent — duplicate webhook does not double-enqueue" do
     seed_call(flow_state: "screening_recording")
+    stub_action(CCID, :speak)  # the immediate goodbye on first webhook
 
     assert_enqueued_jobs 1, only: ScreeningJob do
       post_event recording_saved_payload(url: "https://x/a.wav")

@@ -14,7 +14,7 @@ class ScreeningJobTest < ActiveJob::TestCase
     @call = @tenant.calls.create!(
       call_sid: CCID, call_control_id: CCID,
       from_number: CALLER_FROM, to_number: "+390123456789",
-      status: :screening, flow_state: "processing",
+      status: :screening, flow_state: "hanging_up_after_speak",
       contact: @contact,
       recording_url: "https://api.telnyx.com/v2/recordings/abc.wav"
     )
@@ -24,16 +24,13 @@ class ScreeningJobTest < ActiveJob::TestCase
     File.binwrite(@download_path, "RIFF dummy wav")
     stub_request(:get, "https://api.telnyx.com/v2/recordings/abc.wav")
       .to_return(status: 200, body: "RIFF dummy wav", headers: { "Content-Type" => "audio/wav" })
-    # Stub the hangup — ScreeningJob always tries to close the leg at the end.
-    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/hangup")
-      .to_return(status: 200, body: '{"data":{"result":"ok"}}')
   end
 
   teardown { FileUtils.rm_f(@download_path) }
 
   # === Happy-path classification ===
 
-  test "high-confidence spam → status=spam, NotifyJob, hangup" do
+  test "high-confidence spam → status=spam, NotifyJob, leaves flow_state alone" do
     stub_whisper("Special offer for your phone bill!")
     stub_moonshot("spam", 0.95, "Robocall pattern")
 
@@ -43,12 +40,15 @@ class ScreeningJobTest < ActiveJob::TestCase
 
     @call.reload
     assert_equal "spam", @call.status
-    assert_equal "done", @call.flow_state
+    # flow_state is owned by the controller, not the job — the controller
+    # already set hanging_up_after_speak before enqueueing this job.
+    assert_equal "hanging_up_after_speak", @call.flow_state
     assert_equal "Special offer for your phone bill!", @call.screening_transcript
     assert_equal "Special offer for your phone bill!", @call.voicemail_transcript
     assert_equal "Robocall pattern", @call.ai_reason
     assert_in_delta 0.95, @call.ai_confidence, 0.001
-    assert_requested :post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/hangup"
+    # Job no longer issues hangup — controller does that on call.speak.ended.
+    assert_not_requested :post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/hangup"
   end
 
   test "legit classification → status=legit + NotifyJob" do
@@ -104,7 +104,6 @@ class ScreeningJobTest < ActiveJob::TestCase
     assert_not_requested moonshot_stub
     @call.reload
     assert_equal "unknown", @call.status
-    assert_equal "done", @call.flow_state
     assert_equal "", @call.screening_transcript
   end
 
@@ -248,7 +247,6 @@ class ScreeningJobTest < ActiveJob::TestCase
     # WhisperClient returns nil on failure → coerces to "" in the job → unknown.
     # Operator still gets a notification and can investigate the empty call.
     assert_equal "unknown", @call.status
-    assert_equal "done", @call.flow_state
   end
 
   test "RecordingDownloader failure → status=failed + raise (job retries)" do
@@ -257,7 +255,11 @@ class ScreeningJobTest < ActiveJob::TestCase
     assert_raises do
       ScreeningJob.new.perform(@call.id)
     end
-    assert_equal "failed", @call.reload.status
+    @call.reload
+    assert_equal "failed", @call.status
+    # flow_state is left untouched on failure — controller's call.hangup
+    # handler will set it to "done" when Telnyx finalizes the leg.
+    assert_equal "hanging_up_after_speak", @call.flow_state
   end
 
   private

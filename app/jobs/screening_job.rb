@@ -60,21 +60,22 @@ class ScreeningJob < ApplicationJob
   rescue => e
     Rails.logger.error("ScreeningJob failed for call #{call_id}: #{e.class}: #{e.message}")
     Sentry.capture_exception(e) if defined?(Sentry)
-    Call.find_by(id: call_id)&.update!(status: :failed, flow_state: "done")
+    Call.find_by(id: call_id)&.update!(status: :failed)
     raise
   end
 
   private
 
+  # Update only the classification fields. The controller owns flow_state
+  # and the leg lifecycle (it sends the goodbye + hangup the moment the
+  # recording arrives, so by the time this job finishes the leg is
+  # usually already closed). Touching flow_state here would race with
+  # handle_playback_or_speak_ended.
   def finalize(call, status:, ai_classification: nil)
-    attrs = { status: status, flow_state: "done" }
+    attrs = { status: status }
     attrs[:ai_classification] = ai_classification if ai_classification
     call.update!(attrs)
     NotifyJob.perform_later(call.id)
-    # If the leg is still up (Telnyx keeps it open until we hangup),
-    # close it. The hangup is best-effort: a 422 "Call has already
-    # ended" is fine and gets logged at warn level by CallControlClient.
-    CallControlClient.new.hangup(call.call_control_id) if call.call_control_id.present?
   end
 
   def auto_blacklist_if_pattern_match(call)

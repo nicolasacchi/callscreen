@@ -237,8 +237,14 @@ class TelnyxController < ApplicationController
 
     case call.flow_state
     when "screening_recording"
-      # Caller's screening response — Whisper transcribe + classify.
-      call.update!(flow_state: "processing")
+      # Caller is still on the line — close their leg promptly so they
+      # don't hear ~30 seconds of silence while Whisper + the LLM run.
+      # Play a short "thanks, goodbye" and hangup on speak.ended (existing
+      # hanging_up_after_speak branch). Classification continues async in
+      # ScreeningJob, which writes status/transcript/ai_classification
+      # without touching flow_state.
+      call.update!(flow_state: "hanging_up_after_speak")
+      play_goodbye(call, phrase: "goodbye_spam")
       ScreeningJob.perform_later(call.id)
     when "recording"
       # Legacy whitelisted-voicemail path (greeting + record without
@@ -287,6 +293,22 @@ class TelnyxController < ApplicationController
   end
 
   # === Outbound command shortcuts ===
+
+  # Short "thanks, goodbye" before hangup. Pre-rendered audio if available;
+  # falls back to TTS via speak. The follow-up call.speak.ended OR
+  # call.playback.ended (state=hanging_up_after_speak) issues the hangup.
+  def play_goodbye(call, phrase:)
+    tenant = call.tenant
+    audio = greeting_audio_url_for(tenant, slug: phrase)
+    if audio
+      cc_client.playback_start(call.call_control_id, audio_url: audio)
+    else
+      cc_client.speak(call.call_control_id,
+        payload: GreetingCatalog::SYSTEM_PHRASES[phrase] || "Arrivederci.",
+        voice: "alice",
+        language: tenant.greeting_language)
+    end
+  end
 
   def play_greeting(call)
     tenant = call.tenant
