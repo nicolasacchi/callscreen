@@ -108,6 +108,24 @@ class CallControlClientTest < ActiveSupport::TestCase
     assert_requested s
   end
 
+  test "record_start omits timeout_secs by default (voicemail-style: record til max_length)" do
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/record_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: "{}")
+    @client.record_start(CCID, max_length: 120)
+    refute captured.key?("timeout_secs"), "no silence detection unless explicitly opted in"
+  end
+
+  test "record_start sends timeout_secs when set (silence-detection mode)" do
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/record_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: "{}")
+    @client.record_start(CCID, max_length: 30, timeout_secs: 3)
+    assert_equal 3, captured["timeout_secs"]
+  end
+
   test "transfer posts to + timeout_secs" do
     s = stub_action(:transfer, body_match: hash_including(to: "+393990000001", timeout_secs: 15))
     @client.transfer(CCID, to: "+393990000001")

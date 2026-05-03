@@ -89,14 +89,22 @@ class CallControlClient
 
   # Starts recording the active call leg. Telnyx fires call.recording.saved
   # when the file is ready.
-  def record_start(call_control_id, format: "wav", channels: "single", max_length: 120, play_beep: true,
-                   trim: "trim-silence")
-    post(call_control_id, :record_start,
-         format: format,
-         channels: channels,
-         max_length: max_length,
-         play_beep: play_beep,
-         trim: trim)
+  #
+  # timeout_secs (optional, integer): "When no speech is detected for the
+  # given amount of seconds, the recording will be stopped." Setting it
+  # combines a silence-end-of-speech detector with the max_length hard cap.
+  # Omit to record up to max_length regardless of silence (voicemail-style).
+  def record_start(call_control_id, format: "wav", channels: "single", max_length: 120,
+                   timeout_secs: nil, play_beep: true, trim: "trim-silence")
+    body = {
+      format: format,
+      channels: channels,
+      max_length: max_length,
+      play_beep: play_beep,
+      trim: trim
+    }
+    body[:timeout_secs] = timeout_secs if timeout_secs&.positive?
+    post(call_control_id, :record_start, body)
   end
 
   # Forwards the call to a PSTN number. Timeout MUST stay below the carrier

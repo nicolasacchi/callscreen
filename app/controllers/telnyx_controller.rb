@@ -27,6 +27,10 @@ class TelnyxController < ApplicationController
 
   CALL_CONTROL_ID_FORMAT = /\A[A-Za-z0-9_:=\-]{1,256}\z/
   SCREENING_RECORDING_MAX_SECS = 30
+  # Stop recording after this many seconds of silence. Lets a caller who
+  # said "Sono Mario, chiamo per la cena" finish + pause + get hung up
+  # in ~8s instead of waiting the full max_length=30s timeout.
+  SCREENING_SILENCE_TIMEOUT_SECS = 3
 
   skip_before_action :verify_authenticity_token
   before_action :verify_telnyx_request
@@ -205,11 +209,14 @@ class TelnyxController < ApplicationController
     case call.flow_state
     when "screening_prompt_playing"
       # Greeting finished — start recording the caller's speech.
+      # timeout_secs cuts the recording short on a few seconds of
+      # silence; max_length is the hard cap for very talkative callers.
       call.update!(flow_state: "screening_recording")
       cc_client.record_start(call.call_control_id,
         format: "wav",
         channels: "single",
         max_length: SCREENING_RECORDING_MAX_SECS,
+        timeout_secs: SCREENING_SILENCE_TIMEOUT_SECS,
         play_beep: false,
         trim: "trim-silence")
     when "hanging_up_after_speak"

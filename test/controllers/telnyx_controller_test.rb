@@ -234,13 +234,20 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   # === call.playback.ended → record_start (caller's screening response) ===
 
-  test "playback.ended in screening_prompt_playing → record_start with single-channel WAV" do
+  test "playback.ended in screening_prompt_playing → record_start with single-channel WAV + silence detection" do
     seed_call(flow_state: "screening_prompt_playing")
-    record_stub = stub_action(CCID, :record_start)
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/record_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: '{"data":{"result":"ok"}}')
 
     post_event event_envelope("call.playback.ended")
 
-    assert_requested record_stub
+    assert_equal "wav",    captured["format"]
+    assert_equal "single", captured["channels"]
+    assert_equal 30,       captured["max_length"]
+    assert_equal 3,        captured["timeout_secs"], "silence detection (3s) cuts the recording short"
+    assert_equal false,    captured["play_beep"]
     call = Call.find_by!(call_control_id: CCID)
     assert_equal "screening_recording", call.flow_state
   end
