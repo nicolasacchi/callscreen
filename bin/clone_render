@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Clone a tenant's voice and render the full greeting catalog.
+# Run on the host (not inside the container) — uses the .venv with
+# Chatterbox installed.
+#
+# Usage:
+#   bin/clone_render <tenant_id>
+#   bin/clone_render <tenant_id> --sample storage/voice_samples/tenant_3.wav
+#   bin/clone_render <tenant_id> --dry-run
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${SCRIPT_DIR}/.."
+VENV_PYTHON="${ROOT}/.venv/bin/python"
+
+if [[ ! -x "$VENV_PYTHON" ]]; then
+  echo "callscreen .venv missing at ${ROOT}/.venv — install Chatterbox first:" >&2
+  echo "  python3 -m venv ${ROOT}/.venv && ${ROOT}/.venv/bin/pip install chatterbox-tts" >&2
+  exit 1
+fi
+
+exec "$VENV_PYTHON" "${ROOT}/scripts/clone_render.py" "$@"

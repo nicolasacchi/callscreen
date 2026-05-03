@@ -389,6 +389,82 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_match(/Hi|Hello|busy/i, captured["payload"])
   end
 
+  # === Cloned voice (Chatterbox) takes priority over Kokoro when ready ===
+
+  test "tenant with voice_clone_ready=true plays cloned audio path (_t<id>)" do
+    @tenant.update_columns(
+      voice_sample_path: "tenant_#{@tenant.id}.wav",
+      voice_clone_consent_at: Time.current,
+      voice_clone_active: true,
+      voice_clone_rendered_at: Time.current
+    )
+    cloned_dir = @tenant.cloned_voice_dir
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: cloned_dir)
+    seed_call(flow_state: "answered")
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: '{"data":{"result":"ok"}}')
+
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+393339991111")
+    post_event answered_payload
+
+    assert_match %r{/#{cloned_dir}/}, captured["audio_url"]
+    refute_match %r{/im_nicola/}, captured["audio_url"], "should NOT use the global Kokoro voice"
+  ensure
+    cleanup_greeting_files
+  end
+
+  test "tenant with voice_clone_active but no rendered file falls back to Kokoro" do
+    @tenant.update_columns(
+      voice_sample_path: "tenant_#{@tenant.id}.wav",
+      voice_clone_consent_at: Time.current,
+      voice_clone_active: true,
+      voice_clone_rendered_at: Time.current
+    )
+    # NOTE: no setup_pre_rendered_greeting for cloned voice → file missing.
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "im_nicola")
+    seed_call(flow_state: "answered")
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: "{}")
+
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+393339991111")
+    post_event answered_payload
+
+    # No cloned WAV exists → fell back to Kokoro im_nicola.
+    assert_match %r{/im_nicola/}, captured["audio_url"]
+  ensure
+    cleanup_greeting_files
+  end
+
+  test "tenant with voice_clone_active=false skips cloned path entirely" do
+    @tenant.update_columns(
+      voice_sample_path: "tenant_#{@tenant.id}.wav",
+      voice_clone_consent_at: Time.current,
+      voice_clone_active: false,
+      voice_clone_rendered_at: Time.current
+    )
+    cloned_dir = @tenant.cloned_voice_dir
+    # Even though the cloned file IS present, voice_clone_active=false → ignored.
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: cloned_dir)
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "im_nicola")
+    seed_call(flow_state: "answered")
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: "{}")
+
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+393339991111")
+    post_event answered_payload
+
+    assert_match %r{/im_nicola/}, captured["audio_url"]
+    refute_match %r{/#{cloned_dir}/}, captured["audio_url"]
+  ensure
+    cleanup_greeting_files
+  end
+
   # === call.hangup ===
 
   test "call.hangup marks flow_state done and stamps contact.last_called_at" do

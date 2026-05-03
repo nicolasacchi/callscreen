@@ -1,0 +1,68 @@
+<div class="card">
+  <h3>Personal voice (clone)</h3>
+  <p style="font-size: 0.875rem; color: var(--text-muted);">
+    Upload a 10–30 second sample of your own voice. The screener can then
+    greet your callers with <strong>your voice</strong> instead of the default
+    Kokoro voice. Powered by Chatterbox TTS.
+  </p>
+
+  <% if @tenant.voice_sample_path.present? %>
+    <div style="background: var(--bg); padding: 0.75rem; border-radius: 6px; margin: 0.75rem 0; font-size: 0.875rem;">
+      <strong>Current sample:</strong> <code><%= @tenant.voice_sample_path %></code><br>
+      <% if @tenant.voice_clone_consent_at %>
+        <small style="color: var(--text-muted);">Consent recorded <%= @tenant.voice_clone_consent_at.in_time_zone("Europe/Rome").strftime("%Y-%m-%d %H:%M") %></small><br>
+      <% end %>
+      <% if @tenant.voice_clone_rendered_at %>
+        <small style="color: var(--success);">✓ Cloned audio rendered <%= @tenant.voice_clone_rendered_at.in_time_zone("Europe/Rome").strftime("%Y-%m-%d %H:%M") %></small>
+      <% else %>
+        <small style="color: var(--warning);">⚠ Render pending — run <code>bin/clone_render <%= @tenant.id %></code> on the host machine</small>
+      <% end %>
+    </div>
+
+    <%= button_to "Re-render now", admin_enqueue_voice_clone_render_path,
+                  method: :post, class: "btn btn-sm",
+                  form: { style: "display:inline-block; margin-right: 0.5rem;" } %>
+    <%= button_to "Remove sample + clone", admin_voice_sample_path,
+                  method: :delete, class: "btn btn-sm btn-danger",
+                  form: { style: "display:inline-block;" },
+                  data: { turbo_confirm: "Delete the voice sample and all cloned audio? Default Kokoro voice will be restored." } %>
+  <% else %>
+    <p style="color: var(--text-muted); font-size: 0.875rem;">No voice sample uploaded yet. Use the form below to add one.</p>
+  <% end %>
+
+  <%= form_with(url: admin_voice_sample_path, method: :post, multipart: true,
+                class: "card", style: "margin-top: 1rem; padding: 1rem; background: var(--bg);") do %>
+    <div class="form-group">
+      <label for="voice_sample">Voice sample (WAV / MP3 / M4A, ≤ 30s, ≤ 5 MB)</label>
+      <input type="file" name="voice_sample" id="voice_sample" accept="audio/*" required>
+      <small style="color: var(--text-muted);">
+        Tips: speak naturally for 15–30 seconds, single speaker, no background music.
+        Quality of the clone scales with the quality of your sample.
+      </small>
+    </div>
+    <div class="form-group form-check" style="background: rgba(245,158,11,0.08); padding: 0.75rem; border-radius: 4px; border-left: 3px solid var(--warning);">
+      <input type="checkbox" name="voice_clone_consent" id="voice_clone_consent" value="1" required>
+      <label for="voice_clone_consent" style="display: inline; margin-left: 0.5rem;">
+        <strong>I consent to my voice being synthesized to greet callers.</strong>
+        I acknowledge that the synthetic clone may be imperfect and that the screener
+        may use this voice for any incoming call until I disable it.
+      </label>
+    </div>
+    <%= submit_tag "Upload sample", class: "btn btn-primary" %>
+  <% end %>
+
+  <hr style="border: 0; border-top: 1px solid var(--border); margin: 1.25rem 0;">
+
+  <h4>Activate the cloned voice</h4>
+  <% form_disabled = !@tenant.voice_sample_path.present? %>
+  <%= form_with(model: @tenant, url: admin_profile_path, method: :patch) do |f| %>
+    <div class="form-group form-check">
+      <%= f.check_box :voice_clone_active, disabled: form_disabled %>
+      <%= f.label :voice_clone_active, "Use my cloned voice for callers (instead of default Kokoro)" %>
+      <% if form_disabled %>
+        <small style="display: block; color: var(--text-muted);">Upload a voice sample first to enable.</small>
+      <% end %>
+    </div>
+    <%= f.submit "Save", class: "btn btn-primary" %>
+  <% end %>
+</div>

@@ -148,4 +148,37 @@ class TenantTest < ActiveSupport::TestCase
     @default.destroy
     assert @default.errors[:base].any?, "expected destroy to be blocked"
   end
+
+  test "voice_clone_active requires consent and sample" do
+    t = @default
+    t.update_columns(voice_sample_path: nil, voice_clone_consent_at: nil, voice_clone_active: false)
+
+    t.voice_clone_active = true
+    refute t.valid?
+    assert_includes t.errors[:voice_clone_active], "requires consent before activation"
+    assert_includes t.errors[:voice_clone_active], "requires a voice sample to be uploaded"
+
+    t.voice_clone_consent_at = Time.current
+    refute t.valid?
+    assert_includes t.errors[:voice_clone_active], "requires a voice sample to be uploaded"
+
+    t.voice_sample_path = "tenant_1.wav"
+    assert t.valid?, t.errors.full_messages.inspect
+  end
+
+  test "cloned_voice_dir uses _t<id> prefix that can't collide with Kokoro voice ids" do
+    assert_equal "_t#{@default.id}", @default.cloned_voice_dir
+    refute @default.cloned_voice_dir.match?(/\A[a-z]{2}_[a-z]/), "_t prefix avoids Kokoro voice patterns"
+  end
+
+  test "voice_clone_ready? requires both active and rendered_at" do
+    t = @default
+    t.update_columns(voice_sample_path: "tenant_1.wav",
+                     voice_clone_consent_at: Time.current,
+                     voice_clone_active: true,
+                     voice_clone_rendered_at: nil)
+    refute t.voice_clone_ready?
+    t.update!(voice_clone_rendered_at: Time.current)
+    assert t.voice_clone_ready?
+  end
 end

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Render one phrase from greeting_catalog.rb side-by-side with Kokoro,
+# Chatterbox, and F5 so you can listen and pick. Output: tmp/voice_compare/.
+#
+# Requires the callscreen .venv with at least Kokoro installed.
+# Chatterbox / F5 are optional — the script skips them if absent.
+#
+# Usage:
+#   bin/voice_compare informal_tu                  # Italian (default)
+#   bin/voice_compare goodbye_spam --lang en
+#   bin/voice_compare informal_tu --reference ~/me.wav
+#                                                  # Chatterbox+F5 use this
+#                                                  # 10-30s sample as the
+#                                                  # cloning reference
+#   bin/voice_compare informal_tu --engines kokoro,chatterbox
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${SCRIPT_DIR}/.."
+VENV_PYTHON="${ROOT}/.venv/bin/python"
+
+if [[ -x "$VENV_PYTHON" ]]; then
+  exec "$VENV_PYTHON" "${ROOT}/scripts/voice_compare.py" "$@"
+else
+  echo "callscreen .venv not found at ${ROOT}/.venv — using system python" >&2
+  exec python3 "${ROOT}/scripts/voice_compare.py" "$@"
+fi

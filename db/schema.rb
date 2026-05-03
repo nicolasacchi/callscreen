@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_03_140000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_03_150000) do
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "actor_id"
@@ -132,6 +132,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_140000) do
     t.float "spam_sensitivity", default: 0.5
     t.string "unlock_token"
     t.datetime "updated_at", null: false
+    t.boolean "voice_clone_active", default: false, null: false
+    t.datetime "voice_clone_consent_at"
+    t.datetime "voice_clone_rendered_at"
+    t.string "voice_sample_path"
     t.text "voicemail_prompt"
     t.index ["dedicated_number"], name: "index_tenants_on_dedicated_number", unique: true, where: "dedicated_number IS NOT NULL"
     t.index ["default_tenant"], name: "index_tenants_on_default_tenant", unique: true, where: "default_tenant = 1"

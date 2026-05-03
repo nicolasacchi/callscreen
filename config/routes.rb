@@ -42,6 +42,8 @@ Rails.application.routes.draw do
     resources :rules
     resource  :settings, only: [ :show, :update ]
     resource  :profile,  only: [ :show, :edit, :update ]
+    resource  :voice_sample, only: [ :create, :destroy ]
+    post "voice_sample/clone", to: "voice_samples#enqueue_render", as: :enqueue_voice_clone_render
     resources :tenants
   end
 

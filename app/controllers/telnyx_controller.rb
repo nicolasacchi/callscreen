@@ -397,19 +397,38 @@ class TelnyxController < ApplicationController
     end
   end
 
-  # Picks the pre-rendered audio URL for a greeting/system phrase, swapping
-  # the voice automatically to a same-gender counterpart in the caller's
-  # language (e.g., if_sara/Italian → af_heart/English) when language= is
-  # given. Returns nil when no rendered audio exists for the resulting
-  # (slug, voice, tone) — caller falls back to Telnyx <speak>.
+  # Picks the pre-rendered audio URL for a greeting/system phrase. Lookup
+  # priority:
+  #
+  #   1. Tenant's CLONED voice (when voice_clone_active + rendered) under
+  #      _t<id>/<tone>.wav (or _t<id>/<tone>_en.wav for English variants
+  #      when the caller is non-Italian)
+  #   2. Default Kokoro voice in the caller's language (auto-swapped via
+  #      GreetingCatalog::VOICE_LANGUAGE_PAIRS — if_sara → af_heart for
+  #      English callers etc.)
+  #
+  # Returns nil if neither has a rendered file → caller falls back to
+  # Telnyx <speak> in TelnyxController.
   def greeting_audio_url_for(tenant, slug:, language: nil)
     return nil unless slug
     return nil unless GreetingCatalog::ALL_SLUGS.include?(slug.to_s)
+    tone = tenant.greeting_tone
+    return nil unless GreetingCatalog::TONE_SLUGS.include?(tone.to_s)
+
+    # 1. Cloned-voice path (per-tenant, supersedes Kokoro)
+    if tenant.voice_clone_ready?
+      cloned_voice = tenant.cloned_voice_dir
+      cloned_tone = (language && language != "it") ? "#{tone}_en" : tone
+      cloned_path = GreetingsStorage.path_for(slug, cloned_voice, cloned_tone)
+      if cloned_path.exist?
+        return "#{ENV.fetch('APP_DOMAIN', 'https://phone.example.com')}/greetings/#{slug}/#{cloned_voice}/#{cloned_tone}.wav"
+      end
+    end
+
+    # 2. Default Kokoro voice (gender-matched to language)
     voice = tenant.greeting_voice
     voice = GreetingCatalog.voice_for_language(voice, language) if language
-    tone  = tenant.greeting_tone
     return nil unless Setting::ALLOWED_VOICES.include?(voice.to_s)
-    return nil unless GreetingCatalog::TONE_SLUGS.include?(tone.to_s)
     return nil unless GreetingsStorage.path_for(slug, voice, tone).exist?
     "#{ENV.fetch('APP_DOMAIN', 'https://phone.example.com')}/greetings/#{slug}/#{voice}/#{tone}.wav"
   end

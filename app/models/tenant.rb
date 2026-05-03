@@ -52,6 +52,7 @@ class Tenant < ApplicationRecord
 
   validate :screening_speech_timeout_valid
   validate :only_one_default_tenant
+  validate :voice_clone_active_requires_consent_and_sample
 
   before_validation :default_forward_back_to_mobile, on: :create
 
@@ -73,7 +74,28 @@ class Tenant < ApplicationRecord
     name.presence || slug.presence || email
   end
 
+  # Per-tenant cloned voice lives in storage/greetings/<slug>/_t<id>/<tone>.wav.
+  # The "_t" prefix can never collide with a Kokoro voice slug (Kokoro
+  # voices match [a-z]{2}_[a-z]+) so the path is unambiguous.
+  def cloned_voice_dir
+    "_t#{id}"
+  end
+
+  def voice_clone_ready?
+    voice_clone_active? && voice_clone_rendered_at.present?
+  end
+
   private
+
+  def voice_clone_active_requires_consent_and_sample
+    return unless voice_clone_active?
+    if voice_clone_consent_at.blank?
+      errors.add(:voice_clone_active, "requires consent before activation")
+    end
+    if voice_sample_path.blank?
+      errors.add(:voice_clone_active, "requires a voice sample to be uploaded")
+    end
+  end
 
   def default_forward_back_to_mobile
     return unless forward_back_number.blank?
