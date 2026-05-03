@@ -306,43 +306,68 @@ class TelnyxController < ApplicationController
   # call.playback.ended (state=hanging_up_after_speak) issues the hangup.
   def play_goodbye(call, phrase:)
     tenant = call.tenant
-    audio = greeting_audio_url_for(tenant, slug: phrase)
+    lang = caller_language(call)
+    audio = greeting_audio_url_for(tenant, slug: phrase, language: lang)
     if audio
       cc_client.playback_start(call.call_control_id, audio_url: audio)
     else
+      text = GreetingCatalog::SYSTEM_PHRASES.dig(phrase, lang) ||
+             GreetingCatalog::SYSTEM_PHRASES.dig(phrase, "it") ||
+             "Arrivederci."
       cc_client.speak(call.call_control_id,
-        payload: GreetingCatalog::SYSTEM_PHRASES[phrase] || "Arrivederci.",
+        payload: text,
         voice: "alice",
-        language: tenant.greeting_language)
+        language: language_locale(lang))
     end
   end
 
   def play_greeting(call)
     tenant = call.tenant
-    audio  = greeting_audio_url_for(tenant, slug: tenant.greeting_variant)
+    lang = caller_language(call)
+    audio  = greeting_audio_url_for(tenant, slug: tenant.greeting_variant, language: lang)
 
     if audio
       cc_client.playback_start(call.call_control_id, audio_url: audio)
     else
       cc_client.speak(call.call_control_id,
-        payload: GreetingCatalog.text_for(tenant.greeting_variant) ||
+        payload: GreetingCatalog.text_for(tenant.greeting_variant, language: lang) ||
                  tenant.greeting_text ||
                  Setting.get("greeting_text"),
         voice: "alice",
-        language: tenant.greeting_language)
+        language: language_locale(lang))
     end
+  end
+
+  # Language to use for greeting + Whisper. Either auto-detected from the
+  # caller's E.164 prefix (Italian if +39, English otherwise) or pinned to
+  # the tenant's configured greeting_language when auto-detect is off.
+  def caller_language(call)
+    tenant = call.tenant
+    if tenant.auto_detect_language
+      GreetingCatalog.language_for_number(call.from_number)
+    else
+      tenant.greeting_language.to_s.start_with?("it") ? "it" : "en"
+    end
+  end
+
+  # Map two-letter language code to full Telnyx-accepted locale.
+  def language_locale(lang)
+    lang.to_s == "it" ? "it-IT" : "en-US"
   end
 
   def start_voicemail(call)
     # Used by the legacy whitelisted-voicemail path (no screening).
     tenant = call.tenant
-    audio = greeting_audio_url_for(tenant, slug: "voicemail_prompt")
+    lang = caller_language(call)
+    audio = greeting_audio_url_for(tenant, slug: "voicemail_prompt", language: lang)
     if audio
       cc_client.playback_start(call.call_control_id, audio_url: audio)
     else
+      text = GreetingCatalog::SYSTEM_PHRASES.dig("voicemail_prompt", lang) ||
+             GreetingCatalog::SYSTEM_PHRASES.dig("voicemail_prompt", "it")
       cc_client.speak(call.call_control_id,
-        payload: GreetingCatalog::SYSTEM_PHRASES["voicemail_prompt"],
-        voice: "alice", language: tenant.greeting_language)
+        payload: text,
+        voice: "alice", language: language_locale(lang))
     end
     cc_client.record_start(call.call_control_id,
       max_length: tenant.max_recording_seconds || 120,
@@ -372,10 +397,16 @@ class TelnyxController < ApplicationController
     end
   end
 
-  def greeting_audio_url_for(tenant, slug:)
+  # Picks the pre-rendered audio URL for a greeting/system phrase, swapping
+  # the voice automatically to a same-gender counterpart in the caller's
+  # language (e.g., if_sara/Italian → af_heart/English) when language= is
+  # given. Returns nil when no rendered audio exists for the resulting
+  # (slug, voice, tone) — caller falls back to Telnyx <speak>.
+  def greeting_audio_url_for(tenant, slug:, language: nil)
     return nil unless slug
     return nil unless GreetingCatalog::ALL_SLUGS.include?(slug.to_s)
     voice = tenant.greeting_voice
+    voice = GreetingCatalog.voice_for_language(voice, language) if language
     tone  = tenant.greeting_tone
     return nil unless Setting::ALLOWED_VOICES.include?(voice.to_s)
     return nil unless GreetingCatalog::TONE_SLUGS.include?(tone.to_s)

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_04_30_160400) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_03_140000) do
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "actor_id"
@@ -98,6 +98,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_04_30_160400) do
     t.boolean "admin", default: false, null: false
     t.integer "auto_blacklist_threshold", default: 3
     t.integer "auto_blacklist_window_days", default: 7
+    t.boolean "auto_detect_language", default: true, null: false
     t.datetime "created_at", null: false
     t.datetime "current_sign_in_at"
     t.string "current_sign_in_ip"

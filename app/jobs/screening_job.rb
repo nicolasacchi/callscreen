@@ -13,7 +13,10 @@ class ScreeningJob < ApplicationJob
     tenant = call.tenant
 
     local_path = RecordingDownloader.fetch(call)
-    transcript = WhisperClient.new(local_path).transcribe.to_s.strip
+    # Pass the same language the screener used to greet the caller so
+    # Whisper hints work right (Italian-vs-English).
+    lang = caller_language(call)
+    transcript = WhisperClient.new(local_path, language: lang).transcribe.to_s.strip
 
     call.update!(
       recording_local_path: local_path,
@@ -76,6 +79,15 @@ class ScreeningJob < ApplicationJob
     attrs[:ai_classification] = ai_classification if ai_classification
     call.update!(attrs)
     NotifyJob.perform_later(call.id)
+  end
+
+  def caller_language(call)
+    tenant = call.tenant
+    if tenant.auto_detect_language
+      GreetingCatalog.language_for_number(call.from_number)
+    else
+      tenant.greeting_language.to_s.start_with?("it") ? "it" : "en"
+    end
   end
 
   def auto_blacklist_if_pattern_match(call)

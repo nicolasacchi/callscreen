@@ -18,7 +18,7 @@ class Setting < ApplicationRecord
   }.freeze
 
   ALLOWED_TRANSCRIPTION_ENGINES = %w[Google Telnyx Azure Deepgram].freeze
-  ALLOWED_VOICES = %w[if_sara im_nicola alice man woman].freeze
+  ALLOWED_VOICES = %w[if_sara im_nicola af_heart am_michael alice man woman].freeze
 
   VALIDATORS = {
     "spam_sensitivity" => :validate_sensitivity,

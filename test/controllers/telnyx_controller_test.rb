@@ -323,6 +323,72 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # === Multi-language: caller-language driven greeting + voice swap ===
+
+  test "Italian caller (+39) gets the Italian greeting with the Italian voice" do
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "im_nicola")
+    seed_call(flow_state: "answered")
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: '{"data":{"result":"ok"}}')
+
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+393339991111")
+    post_event answered_payload
+
+    assert_match %r{/im_nicola/}, captured["audio_url"]
+  ensure
+    cleanup_greeting_files
+  end
+
+  test "English caller (non-+39) gets the English greeting with the English voice equivalent" do
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "am_michael")
+    seed_call(flow_state: "answered")
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: '{"data":{"result":"ok"}}')
+
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+14155551234")
+    post_event answered_payload
+
+    assert_match %r{/am_michael/}, captured["audio_url"]
+  ensure
+    cleanup_greeting_files
+  end
+
+  test "auto_detect_language=false pins greeting to tenant.greeting_language regardless of caller" do
+    @tenant.update!(auto_detect_language: false, greeting_language: "it-IT")
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "im_nicola")
+    seed_call(flow_state: "answered")
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: '{"data":{"result":"ok"}}')
+
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+14155551234")
+    post_event answered_payload
+
+    # Even though caller is non-+39, we play the Italian voice/text.
+    assert_match %r{/im_nicola/}, captured["audio_url"]
+  ensure
+    cleanup_greeting_files
+  end
+
+  test "no pre-rendered audio → speak fallback uses the right text + locale per caller language" do
+    seed_call(flow_state: "answered")
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/speak")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: '{"data":{"result":"ok"}}')
+
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+14155551234")
+    post_event answered_payload
+
+    assert_equal "en-US", captured["language"]
+    assert_match(/Hi|Hello|busy/i, captured["payload"])
+  end
+
   # === call.hangup ===
 
   test "call.hangup marks flow_state done and stamps contact.last_called_at" do
@@ -438,9 +504,9 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
       )
   end
 
-  def setup_pre_rendered_greeting(slug)
+  def setup_pre_rendered_greeting(slug, voice: nil)
     @greeting_paths ||= []
-    voice = @tenant.greeting_voice
+    voice ||= @tenant.greeting_voice
     tone  = @tenant.greeting_tone
     path  = GreetingsStorage.path_for(slug, voice, tone)
     FileUtils.mkdir_p(path.dirname)

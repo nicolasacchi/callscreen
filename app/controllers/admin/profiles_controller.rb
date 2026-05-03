@@ -40,7 +40,8 @@ module Admin
         :screening_speech_timeout,
         :max_calls_per_caller_per_day,
         :auto_blacklist_threshold,
-        :auto_blacklist_window_days
+        :auto_blacklist_window_days,
+        :auto_detect_language
       )
     end
   end

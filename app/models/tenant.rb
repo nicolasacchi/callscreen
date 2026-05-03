@@ -10,7 +10,7 @@ class Tenant < ApplicationRecord
   has_many :audit_logs, dependent: :nullify
   has_many :acted_audit_logs, class_name: "AuditLog", foreign_key: :actor_id, dependent: :nullify
 
-  ALLOWED_VOICES    = %w[if_sara im_nicola alice man woman].freeze
+  ALLOWED_VOICES    = %w[if_sara im_nicola af_heart am_michael alice man woman].freeze
   USERNAME_FORMAT   = /\A[a-z0-9._-]+\z/i
   E164_FORMAT       = /\A\+?[0-9]{6,15}\z/
   SLUG_FORMAT       = /\A[a-z0-9._-]+\z/

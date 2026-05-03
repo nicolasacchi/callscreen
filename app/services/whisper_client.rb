@@ -1,6 +1,9 @@
 class WhisperClient
-  def initialize(audio_file_path)
+  ALLOWED_LANGUAGES = %w[it en].freeze
+
+  def initialize(audio_file_path, language: "it")
     @audio_file_path = audio_file_path
+    @language = ALLOWED_LANGUAGES.include?(language.to_s) ? language.to_s : "it"
   end
 
   def transcribe
@@ -10,7 +13,7 @@ class WhisperClient
       body: {
         file: File.open(@audio_file_path, "rb"),
         model: "Systran/faster-whisper-medium",
-        language: "it",
+        language: @language,
         response_format: "json"
       },
       headers: { "X-Request-ID" => Current.request_id.to_s },

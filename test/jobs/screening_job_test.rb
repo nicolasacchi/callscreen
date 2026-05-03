@@ -30,6 +30,46 @@ class ScreeningJobTest < ActiveJob::TestCase
 
   # === Happy-path classification ===
 
+  test "Italian caller (+39) → Whisper called with language=it" do
+    captured = nil
+    stub_request(:post, %r{faster-whisper.test:8000/v1/audio/transcriptions})
+      .with { |req| captured = req.body.to_s; true }
+      .to_return(status: 200, body: { text: "ciao" }.to_json)
+    stub_moonshot("legit", 0.9, "ok")
+    @call.update!(from_number: "+393339998888")
+
+    ScreeningJob.new.perform(@call.id)
+
+    assert_match(/name="language"\r?\n\r?\nit\b/m, captured)
+  end
+
+  test "Non-Italian caller → Whisper called with language=en" do
+    captured = nil
+    stub_request(:post, %r{faster-whisper.test:8000/v1/audio/transcriptions})
+      .with { |req| captured = req.body.to_s; true }
+      .to_return(status: 200, body: { text: "hello" }.to_json)
+    stub_moonshot("legit", 0.9, "ok")
+    @call.update!(from_number: "+14155551234")
+
+    ScreeningJob.new.perform(@call.id)
+
+    assert_match(/name="language"\r?\n\r?\nen\b/m, captured)
+  end
+
+  test "auto_detect_language=false pins Whisper to tenant.greeting_language" do
+    @tenant.update!(auto_detect_language: false, greeting_language: "en-US")
+    captured = nil
+    stub_request(:post, %r{faster-whisper.test:8000/v1/audio/transcriptions})
+      .with { |req| captured = req.body.to_s; true }
+      .to_return(status: 200, body: { text: "x" }.to_json)
+    stub_moonshot("legit", 0.9, "ok")
+    @call.update!(from_number: "+393339998888")  # Italian caller, but tenant pinned EN
+
+    ScreeningJob.new.perform(@call.id)
+
+    assert_match(/name="language"\r?\n\r?\nen\b/m, captured)
+  end
+
   test "high-confidence spam → status=spam, NotifyJob, leaves flow_state alone" do
     stub_whisper("Special offer for your phone bill!")
     stub_moonshot("spam", 0.95, "Robocall pattern")

@@ -29,16 +29,32 @@
     <%= f.select :greeting_variant, GreetingCatalog::VARIANTS.map { |v| [ v.label, v.slug ] } %>
   </div>
   <div class="form-group">
-    <%= f.label :greeting_voice %>
+    <%= f.label :greeting_voice, "Greeting voice (Italian)" %>
     <%= f.select :greeting_voice, Tenant::ALLOWED_VOICES.map { |v| [ GreetingCatalog::VOICES[v] || v, v ] } %>
+    <small style="display: block; margin-top: 0.25rem; color: var(--text-muted);">
+      The voice the screener uses for Italian callers. With language auto-detect on (below),
+      English callers automatically get the matching English voice
+      (<code>if_sara</code> → <code>af_heart</code>, <code>im_nicola</code> → <code>am_michael</code>).
+    </small>
   </div>
   <div class="form-group">
     <%= f.label :greeting_tone %>
     <%= f.select :greeting_tone, GreetingCatalog::TONES.map { |slug, info| [ info[:label], slug ] } %>
   </div>
+
+  <h3>Language</h3>
+  <div class="form-group form-check">
+    <%= f.check_box :auto_detect_language %>
+    <%= f.label :auto_detect_language, "Auto-detect caller language from phone number" %>
+    <small style="display: block; margin-top: 0.25rem; color: var(--text-muted);">
+      When ON: callers from <strong>+39</strong> (Italy) hear the Italian greeting and Whisper transcribes in
+      Italian; everyone else hears English. When OFF: every caller hears the language picked below
+      regardless of where they're calling from.
+    </small>
+  </div>
   <div class="form-group">
-    <%= f.label :greeting_language %>
-    <%= f.select :greeting_language, [ [ "Italian", "it-IT" ], [ "English", "en-US" ], [ "French", "fr-FR" ], [ "German", "de-DE" ], [ "Spanish", "es-ES" ] ] %>
+    <%= f.label :greeting_language, "Default language (used when auto-detect is OFF)" %>
+    <%= f.select :greeting_language, [ [ "Italian", "it-IT" ], [ "English", "en-US" ] ] %>
   </div>
   <div class="form-group">
     <%= f.label :greeting_text, "Fallback greeting text" %>
