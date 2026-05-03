@@ -17,6 +17,9 @@ class Call < ApplicationRecord
   FLOW_STATES = %w[
     initiated
     answered
+    screening_prompt_playing
+    screening_recording
+    processing
     greeting_playing
     awaiting_speech
     classifying

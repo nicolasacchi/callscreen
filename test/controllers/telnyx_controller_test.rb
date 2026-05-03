@@ -3,6 +3,10 @@ require "test_helper"
 # Voice API event-driven dispatcher tests. Each call.* event is sent to
 # /telnyx/voice as JSON; the controller verifies the signature, persists
 # Call.flow_state, and POSTs commands back to Telnyx via CallControlClient.
+#
+# Speech transcription happens in ScreeningJob (which is enqueued from
+# call.recording.saved). Classification logic lives there; this file only
+# verifies the controller orchestrates the right Voice API commands.
 class TelnyxControllerTest < ActionDispatch::IntegrationTest
   setup do
     @token  = ENV.fetch("WEBHOOK_TOKEN")
@@ -26,8 +30,6 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "fallback token (?token=) authenticates an otherwise-unsigned webhook" do
-    # Use an unknown event_type so the dispatcher just acknowledges (no
-    # downstream API call). This isolates the auth assertion.
     post telnyx_voice_url(token: @token), params: event_envelope("call.unknown.foo").to_json,
          headers: { "Content-Type" => "application/json" }
     assert_response :success
@@ -205,196 +207,95 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  # === call.answered → greeting gather ===
+  # === call.answered → playback_start (greeting only, no gather) ===
 
-  test "call.answered triggers gather_using_audio with the tenant's pre-rendered greeting" do
+  test "call.answered with pre-rendered audio plays greeting via playback_start" do
     setup_pre_rendered_greeting(@tenant.greeting_variant)
     seed_call(flow_state: "answered")
-    gather_stub = stub_action(CCID, :gather_using_audio)
+    pb_stub = stub_action(CCID, :playback_start)
 
     post_event answered_payload
 
-    assert_requested gather_stub
-    assert_equal "awaiting_speech", Call.find_by!(call_control_id: CCID).reload.flow_state
+    assert_requested pb_stub
+    assert_equal "screening_prompt_playing", Call.find_by!(call_control_id: CCID).reload.flow_state
   ensure
     cleanup_greeting_files
   end
 
-  test "call.answered without pre-rendered audio falls back to gather_using_speak" do
+  test "call.answered without pre-rendered audio falls back to TTS via speak" do
     seed_call(flow_state: "answered")
-    gather_stub = stub_action(CCID, :gather_using_speak)
+    speak_stub = stub_action(CCID, :speak)
 
     post_event answered_payload
 
-    assert_requested gather_stub
-    assert_equal "awaiting_speech", Call.find_by!(call_control_id: CCID).reload.flow_state
+    assert_requested speak_stub
+    assert_equal "screening_prompt_playing", Call.find_by!(call_control_id: CCID).reload.flow_state
   end
 
-  # === call.gather.ended → classification ===
+  # === call.playback.ended → record_start (caller's screening response) ===
 
-  test "empty transcript on first gather (call still live) → unknown + voicemail" do
-    seed_call(flow_state: "awaiting_speech")
-    speak_stub  = stub_action(CCID, :speak)         # voicemail prompt
-    record_stub = stub_action(CCID, :record_start)  # start recording
+  test "playback.ended in screening_prompt_playing → record_start with single-channel WAV" do
+    seed_call(flow_state: "screening_prompt_playing")
+    record_stub = stub_action(CCID, :record_start)
 
-    post_event gather_payload(transcript: "", gather_status: "valid")
+    post_event event_envelope("call.playback.ended")
 
-    assert_requested speak_stub
     assert_requested record_stub
     call = Call.find_by!(call_control_id: CCID)
-    assert_equal "recording", call.status
-    assert_equal "recording", call.flow_state
+    assert_equal "screening_recording", call.flow_state
   end
 
-  test "empty transcript with gather status=call_hangup → unknown + no follow-up audio" do
-    seed_call(flow_state: "awaiting_speech")
-    speak_stub    = stub_action(CCID, :speak)
-    record_stub   = stub_action(CCID, :record_start)
-    playback_stub = stub_action(CCID, :playback_start)
+  test "speak.ended in screening_prompt_playing also triggers record_start (TTS-greeting fallback)" do
+    seed_call(flow_state: "screening_prompt_playing")
+    record_stub = stub_action(CCID, :record_start)
 
-    assert_enqueued_jobs 1, only: NotifyJob do
-      post_event gather_payload(transcript: "", gather_status: "call_hangup")
-    end
-    # Crucial: no command issued because Telnyx would 422 on a dead leg.
-    assert_not_requested speak_stub
-    assert_not_requested record_stub
-    assert_not_requested playback_stub
+    post_event event_envelope("call.speak.ended")
 
-    call = Call.find_by!(call_control_id: CCID)
-    assert_equal "unknown", call.status
-    assert_equal "done", call.flow_state
-  end
-
-  test "high-confidence spam classification → goodbye_spam playback or speak" do
-    seed_call(flow_state: "awaiting_speech")
-    stub_moonshot("spam", 0.95, "Robocall")
-    speak_stub = stub_action(CCID, :speak)
-
-    assert_enqueued_jobs 1, only: NotifyJob do
-      post_event gather_payload(transcript: "Special offer for your phone bill")
-    end
-    assert_requested speak_stub
-  end
-
-  test "legit classification starts voicemail recording" do
-    seed_call(flow_state: "awaiting_speech")
-    stub_moonshot("legit", 0.92, "Sounds real")
-    speak_stub = stub_action(CCID, :speak)        # voicemail prompt
-    record_stub = stub_action(CCID, :record_start) # actual recording
-
-    post_event gather_payload(transcript: "Sono Mario chiamo per informazioni")
-
-    assert_requested speak_stub
     assert_requested record_stub
-    assert_equal "recording", Call.find_by!(call_control_id: CCID).status
+    assert_equal "screening_recording", Call.find_by!(call_control_id: CCID).flow_state
   end
 
-  test "uncertain classification asks one clarifying question" do
-    seed_call(flow_state: "awaiting_speech")
-    stub_moonshot("uncertain", 0.3, "Garbled")
-    gather_stub = stub_action(CCID, :gather_using_speak)  # no audio for clarify
-
-    post_event gather_payload(transcript: "uhm")
-
-    assert_requested gather_stub
-    call = Call.find_by!(call_control_id: CCID)
-    assert_equal "uncertain", call.status
-    assert_equal "clarification_awaiting_speech", call.flow_state
-  end
-
-  test "low-confidence spam (below tenant.spam_sensitivity) is treated as uncertain" do
-    @tenant.update!(spam_sensitivity: 0.9)
-    seed_call(flow_state: "awaiting_speech")
-    stub_moonshot("spam", 0.5, "Mildly suspicious")
-    gather_stub = stub_action(CCID, :gather_using_speak)
-
-    post_event gather_payload(transcript: "Pronto?")
-
-    assert_requested gather_stub
-    assert_equal "uncertain", Call.find_by!(call_control_id: CCID).status
-  end
-
-  test "low-confidence spam (above tenant.spam_sensitivity) is hung up" do
-    @tenant.update!(spam_sensitivity: 0.3)
-    seed_call(flow_state: "awaiting_speech")
-    stub_moonshot("spam", 0.5, "Mildly suspicious")
-    speak_stub = stub_action(CCID, :speak)
-
-    post_event gather_payload(transcript: "Pronto?")
-
-    assert_requested speak_stub
-    assert_equal "spam", Call.find_by!(call_control_id: CCID).status
-  end
-
-  test "second-pass clarification: legit → voicemail" do
-    seed_call(flow_state: "clarification_awaiting_speech", screening_transcript: "uhm")
-    stub_moonshot("legit", 0.85, "Real caller after clarification")
-    stub_action(CCID, :speak)
-    stub_action(CCID, :record_start)
-
-    post_event gather_payload(transcript: "Sono Lucia, chiamo per il pacco")
-
-    call = Call.find_by!(call_control_id: CCID)
-    assert_equal "recording", call.status
-  end
-
-  test "keyword rule short-circuits LLM and triggers spam goodbye" do
-    @tenant.rules.create!(rule_type: :keyword, action: :block, value: "warranty", active: true)
-    seed_call(flow_state: "awaiting_speech")
-    speak_stub = stub_action(CCID, :speak)
-
-    assert_enqueued_jobs 1, only: NotifyJob do
-      post_event gather_payload(transcript: "Hi about your warranty plan")
-    end
-    assert_requested speak_stub
-    call = Call.find_by!(call_control_id: CCID)
-    assert_equal "Keyword rule: warranty", call.ai_classification["reason"]
-  end
-
-  # === call.recording.saved ===
-
-  test "recording.saved persists URL, queues TranscribeRecordingJob, hangs up" do
-    seed_call(flow_state: "recording")
-    hangup_stub = stub_action(CCID, :hangup)
-
-    assert_enqueued_jobs 1, only: TranscribeRecordingJob do
-      post_event recording_saved_payload(url: "https://api.telnyx.com/v2/recordings/abc.wav")
-    end
-    assert_requested hangup_stub
-    call = Call.find_by!(call_control_id: CCID)
-    assert_equal "https://api.telnyx.com/v2/recordings/abc.wav", call.recording_url
-    assert_equal "completed", call.status
-  end
-
-  test "recording.saved is idempotent — duplicate webhook does not double-enqueue" do
-    seed_call(flow_state: "recording")
-    stub_action(CCID, :hangup)
-
-    assert_enqueued_jobs 1, only: TranscribeRecordingJob do
-      post_event recording_saved_payload(url: "https://x/a.wav")
-      post_event recording_saved_payload(url: "https://x/a.wav")
-    end
-  end
-
-  # === call.playback.ended → finalize hangup ===
-
-  test "playback.ended after hanging_up_after_speak issues hangup" do
+  test "playback.ended in hanging_up_after_speak issues hangup" do
     seed_call(flow_state: "hanging_up_after_speak")
     hangup_stub = stub_action(CCID, :hangup)
 
-    post_event(event_envelope("call.playback.ended"))
+    post_event event_envelope("call.playback.ended")
 
     assert_requested hangup_stub
     assert_equal "done", Call.find_by!(call_control_id: CCID).flow_state
   end
 
-  test "speak.ended after hanging_up_after_speak issues hangup" do
-    seed_call(flow_state: "hanging_up_after_speak")
+  # === call.recording.saved → ScreeningJob (or TranscribeRecordingJob for legacy) ===
+
+  test "recording.saved in screening_recording → enqueue ScreeningJob" do
+    seed_call(flow_state: "screening_recording")
+
+    assert_enqueued_jobs 1, only: ScreeningJob do
+      post_event recording_saved_payload(url: "https://api.telnyx.com/v2/recordings/abc.wav")
+    end
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal "https://api.telnyx.com/v2/recordings/abc.wav", call.recording_url
+    assert_equal "processing", call.flow_state
+  end
+
+  test "recording.saved in legacy 'recording' state → enqueue TranscribeRecordingJob + hangup" do
+    seed_call(flow_state: "recording")
     hangup_stub = stub_action(CCID, :hangup)
 
-    post_event(event_envelope("call.speak.ended"))
-
+    assert_enqueued_jobs 1, only: TranscribeRecordingJob do
+      post_event recording_saved_payload(url: "https://api.telnyx.com/v2/recordings/vm.wav")
+    end
     assert_requested hangup_stub
+    assert_equal "completed", Call.find_by!(call_control_id: CCID).status
+  end
+
+  test "recording.saved is idempotent — duplicate webhook does not double-enqueue" do
+    seed_call(flow_state: "screening_recording")
+
+    assert_enqueued_jobs 1, only: ScreeningJob do
+      post_event recording_saved_payload(url: "https://x/a.wav")
+      post_event recording_saved_payload(url: "https://x/a.wav")
+    end
   end
 
   # === call.hangup ===
@@ -411,6 +312,14 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
   test "unknown event_type is acknowledged with 200" do
     post_event event_envelope("call.cost")
     assert_response :success
+  end
+
+  test "call.gather.ended (DTMF, currently unused) is acknowledged but does nothing" do
+    seed_call(flow_state: "screening_recording")
+    post_event event_envelope("call.gather.ended", { "call_control_id" => CCID, "digits" => "1" })
+    assert_response :success
+    # No state change — the controller has no use for the event in this flow.
+    assert_equal "screening_recording", Call.find_by!(call_control_id: CCID).flow_state
   end
 
   private
@@ -447,14 +356,6 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   def answered_payload
     event_envelope("call.answered", { "call_control_id" => CCID, "from" => CALLER_FROM, "to" => TENANT_TO })
-  end
-
-  def gather_payload(transcript:, gather_status: "valid")
-    event_envelope("call.gather.ended", {
-      "call_control_id" => CCID,
-      "transcription"   => { "transcript" => transcript, "confidence" => 0.9 },
-      "status"          => gather_status
-    })
   end
 
   def recording_saved_payload(url:)
@@ -510,14 +411,6 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
         body: { match: true, name: name, policy: policy, addressbook: addressbook, contact_id: 1 }.to_json,
         headers: { "Content-Type" => "application/json" }
       )
-  end
-
-  def stub_moonshot(classification, confidence, reason)
-    body = {
-      choices: [ { message: { content: { classification:, confidence:, reason: }.to_json } } ]
-    }.to_json
-    stub_request(:post, "https://api.moonshot.ai/v1/chat/completions")
-      .to_return(status: 200, body: body, headers: { "Content-Type" => "application/json" })
   end
 
   def setup_pre_rendered_greeting(slug)

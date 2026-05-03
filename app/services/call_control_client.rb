@@ -41,15 +41,18 @@ class CallControlClient
     post(call_control_id, :speak, payload: payload, voice: voice, language: language, payload_type: payload_type)
   end
 
-  # Plays an audio file then captures speech with on-the-fly transcription.
-  # Telnyx fires call.gather.ended with the transcript on the payload.
+  # Plays an audio file then captures DTMF digits.
   #
-  # NOTE: Telnyx requires maximum_digits/minimum_digits to be in [1, 128] if
+  # IMPORTANT: Telnyx Voice API's gather_using_audio is DTMF-ONLY. It does
+  # NOT support speech transcription, despite TeXML's <Gather> verb having
+  # transcriptionEngine. For speech capture, use record_start (then
+  # transcribe externally) or transcription_start (streaming). The
+  # `language` arg here only validates valid_digits, not transcription.
+  #
+  # Telnyx requires maximum_digits/minimum_digits to be in [1, 128] if
   # present at all — sending 0 returns a 422. We omit them unless the caller
-  # explicitly opts in (e.g., for an "enter your extension" gather). Defaults
-  # work fine for speech-only because total_timeout_secs ends the capture.
+  # explicitly opts in (e.g., for an "enter your extension" gather).
   def gather_using_audio(call_control_id, audio_url:, language: "it-IT",
-                         transcription_engine: "Google",
                          valid_digits: nil,
                          maximum_digits: nil,
                          minimum_digits: nil,
@@ -57,8 +60,6 @@ class CallControlClient
     body = {
       audio_url: audio_url,
       language: language,
-      transcription: true,
-      transcription_engine: transcription_engine,
       total_timeout_secs: total_timeout_secs
     }
     body[:valid_digits]   = valid_digits   if valid_digits
@@ -67,8 +68,10 @@ class CallControlClient
     post(call_control_id, :gather_using_audio, body)
   end
 
+  # DTMF-only counterpart to gather_using_audio. Speaks a TTS prompt, then
+  # captures keypad digits. NOT used for speech recognition (see
+  # gather_using_audio's note for details).
   def gather_using_speak(call_control_id, payload:, voice: "alice", language: "it-IT",
-                         transcription_engine: "Google",
                          maximum_digits: nil,
                          minimum_digits: nil,
                          total_timeout_secs: 30)
@@ -77,8 +80,6 @@ class CallControlClient
       voice: voice,
       language: language,
       payload_type: "text",
-      transcription: true,
-      transcription_engine: transcription_engine,
       total_timeout_secs: total_timeout_secs
     }
     body[:maximum_digits] = maximum_digits if maximum_digits&.positive?

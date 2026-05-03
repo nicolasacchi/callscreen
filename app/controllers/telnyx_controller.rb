@@ -13,8 +13,20 @@ class TelnyxController < ApplicationController
   #   1. Tenant.find_by(dedicated_number: payload[:to])
   #   2. Tenant.find_by(mobile_number: SipHeadersParser.original_called_number(...))
   #   3. Tenant.default (fallback; call is flagged unattributed)
+  #
+  # Screening flow (Voice API does NOT support transcription on
+  # gather_using_audio — only DTMF — so we capture caller speech via
+  # record_start and transcribe with Whisper post-hoc):
+  #
+  #   call.initiated → answer
+  #   call.answered → playback_start(greeting)         state=screening_prompt_playing
+  #   call.playback.ended → record_start(max_length)   state=screening_recording
+  #   call.recording.saved → enqueue ScreeningJob      state=processing
+  #   ScreeningJob → Whisper → SpamClassifier → finalize
+  #   call.hangup → mark done
 
   CALL_CONTROL_ID_FORMAT = /\A[A-Za-z0-9_:=\-]{1,256}\z/
+  SCREENING_RECORDING_MAX_SECS = 30
 
   skip_before_action :verify_authenticity_token
   before_action :verify_telnyx_request
@@ -29,7 +41,6 @@ class TelnyxController < ApplicationController
     case event
     when "call.initiated"          then handle_initiated(payload)
     when "call.answered"           then handle_answered(payload)
-    when "call.gather.ended"       then handle_gather_ended(payload)
     when "call.recording.saved"    then handle_recording_saved(payload)
     when "call.playback.ended", "call.speak.ended"
                                    then handle_playback_or_speak_ended(payload)
@@ -176,32 +187,34 @@ class TelnyxController < ApplicationController
 
     case call.flow_state
     when "answered"
-      # Greeting + first gather
-      call.update!(flow_state: "awaiting_speech")
-      issue_greeting_gather(call)
+      # Play the greeting. Caller speech will be captured by the
+      # follow-up record_start that fires on call.playback.ended.
+      call.update!(flow_state: "screening_prompt_playing")
+      play_greeting(call)
     when "transfer_dialing"
-      # Allow path actually triggers transfer immediately on initiated; nothing to do here.
+      # Allow path triggered transfer immediately on initiated; nothing to do.
     end
   end
 
-  def handle_gather_ended(payload)
-    p   = payload.dig("data", "payload") || {}
+  def handle_playback_or_speak_ended(payload)
+    p    = payload.dig("data", "payload") || {}
     ccid = p["call_control_id"]
     call = Call.find_by(call_control_id: ccid)
     return unless call
 
-    transcript = p.dig("transcription", "transcript").to_s
-    # When the gather ends because the caller hung up mid-prompt, Telnyx
-    # sets payload.status="call_hangup" and the leg is already dead. Any
-    # further command (playback, speak, hangup) returns 422 "Call has
-    # already ended". We must short-circuit and not issue follow-up audio.
-    gather_status = p["status"].to_s
-
     case call.flow_state
-    when "awaiting_speech"
-      classify_first_pass(call, transcript, gather_status: gather_status)
-    when "clarification_awaiting_speech"
-      classify_clarification_pass(call, transcript, gather_status: gather_status)
+    when "screening_prompt_playing"
+      # Greeting finished — start recording the caller's speech.
+      call.update!(flow_state: "screening_recording")
+      cc_client.record_start(call.call_control_id,
+        format: "wav",
+        channels: "single",
+        max_length: SCREENING_RECORDING_MAX_SECS,
+        play_beep: false,
+        trim: "trim-silence")
+    when "hanging_up_after_speak"
+      call.update!(flow_state: "done")
+      cc_client.hangup(ccid)
     end
   end
 
@@ -212,26 +225,30 @@ class TelnyxController < ApplicationController
     call = Call.find_by(call_control_id: ccid)
     return unless call
 
-    if call.recording_url.blank?
-      call.update!(
-        recording_url: url,
-        duration_seconds: p["duration_seconds"].to_i,
-        status: :completed,
-        flow_state: "done"
-      )
+    # Idempotent: Telnyx fires recording.saved twice (one for the
+    # action callback, one for the recordingStatusCallback). First
+    # webhook wins; the rest are no-ops.
+    return if call.recording_url.present?
+
+    call.update!(
+      recording_url: url,
+      duration_seconds: p["duration_seconds"].to_i
+    )
+
+    case call.flow_state
+    when "screening_recording"
+      # Caller's screening response — Whisper transcribe + classify.
+      call.update!(flow_state: "processing")
+      ScreeningJob.perform_later(call.id)
+    when "recording"
+      # Legacy whitelisted-voicemail path (greeting + record without
+      # screening, used when an allow-listed caller has no
+      # forward_back_number set). Just transcribe + notify.
+      call.update!(status: :completed, flow_state: "done")
       TranscribeRecordingJob.perform_later(call.id)
-    end
-    cc_client.hangup(ccid)
-  end
-
-  def handle_playback_or_speak_ended(payload)
-    p    = payload.dig("data", "payload") || {}
-    ccid = p["call_control_id"]
-    call = Call.find_by(call_control_id: ccid)
-    return unless call
-
-    if call.flow_state == "hanging_up_after_speak"
-      call.update!(flow_state: "done")
+      cc_client.hangup(ccid)
+    else
+      Rails.logger.info("recording.saved in unexpected flow_state=#{call.flow_state}")
       cc_client.hangup(ccid)
     end
   end
@@ -269,123 +286,27 @@ class TelnyxController < ApplicationController
       SipHeadersParser.original_called_number(sip_headers) != tenant.mobile_number
   end
 
-  # === Classification ===
-
-  def classify_first_pass(call, transcript, gather_status: nil)
-    tenant = call.tenant
-    call.update!(screening_transcript: transcript)
-
-    if transcript.blank?
-      mark_unknown_and_followup(call, gather_status: gather_status)
-      return
-    end
-
-    # Keyword rules
-    keyword_rule = tenant.rules.active.keyword.find { |r| r.matches_transcript?(transcript) }
-    if keyword_rule
-      keyword_rule.increment!(:hit_count)
-      if keyword_rule.action_block?
-        call.update!(
-          ai_classification: { "classification" => "spam", "confidence" => 1.0, "reason" => "Keyword rule: #{keyword_rule.value}" }
-        )
-        finish_with_spam(call, phrase: "goodbye_spam")
-        return
-      end
-    end
-
-    sensitivity = tenant.spam_sensitivity || Setting.get("spam_sensitivity").to_f
-    result = SpamClassifier.new(transcript, from_number: call.from_number, sensitivity: sensitivity).classify
-    call.update!(ai_classification: result)
-
-    case result["classification"]
-    when "spam"
-      if result["confidence"].to_f >= sensitivity
-        finish_with_spam(call, phrase: "goodbye_spam")
-      else
-        ask_clarification(call)
-      end
-    when "legit"
-      call.update!(status: :legit)
-      start_voicemail(call)
-    else
-      ask_clarification(call)
-    end
-  end
-
-  def classify_clarification_pass(call, transcript, gather_status: nil)
-    tenant = call.tenant
-    combined = "#{call.screening_transcript}\n[Clarification]: #{transcript}".strip
-    call.update!(screening_transcript: combined)
-
-    if transcript.blank?
-      mark_unknown_and_followup(call, gather_status: gather_status)
-      return
-    end
-
-    sensitivity = tenant.spam_sensitivity || Setting.get("spam_sensitivity").to_f
-    result = SpamClassifier.new(combined, from_number: call.from_number, sensitivity: sensitivity).classify
-    call.update!(ai_classification: result)
-
-    case result["classification"]
-    when "spam"
-      if result["confidence"].to_f >= sensitivity
-        finish_with_spam(call, phrase: "goodbye_spam")
-      else
-        call.update!(status: :uncertain)
-        start_voicemail(call)
-      end
-    when "legit"
-      call.update!(status: :legit)
-      start_voicemail(call)
-    else
-      call.update!(status: :uncertain)
-      start_voicemail(call)
-    end
-  end
-
   # === Outbound command shortcuts ===
 
-  def issue_greeting_gather(call)
+  def play_greeting(call)
     tenant = call.tenant
     audio  = greeting_audio_url_for(tenant, slug: tenant.greeting_variant)
 
     if audio
-      cc_client.gather_using_audio(call.call_control_id,
-        audio_url: audio,
-        language:  tenant.greeting_language,
-        transcription_engine: Setting.get("transcription_engine"),
-        total_timeout_secs: 30
-      )
+      cc_client.playback_start(call.call_control_id, audio_url: audio)
     else
-      cc_client.gather_using_speak(call.call_control_id,
-        payload:  GreetingCatalog.text_for(tenant.greeting_variant) || tenant.greeting_text || Setting.get("greeting_text"),
-        voice:    "alice",
-        language: tenant.greeting_language,
-        transcription_engine: Setting.get("transcription_engine"),
-        total_timeout_secs: 30
-      )
-    end
-  end
-
-  def ask_clarification(call)
-    tenant = call.tenant
-    call.update!(status: :uncertain, flow_state: "clarification_awaiting_speech")
-    audio = greeting_audio_url_for(tenant, slug: "clarify")
-    if audio
-      cc_client.gather_using_audio(call.call_control_id,
-        audio_url: audio, language: tenant.greeting_language,
-        transcription_engine: Setting.get("transcription_engine"))
-    else
-      cc_client.gather_using_speak(call.call_control_id,
-        payload: GreetingCatalog::SYSTEM_PHRASES["clarify"],
-        voice: "alice", language: tenant.greeting_language,
-        transcription_engine: Setting.get("transcription_engine"))
+      cc_client.speak(call.call_control_id,
+        payload: GreetingCatalog.text_for(tenant.greeting_variant) ||
+                 tenant.greeting_text ||
+                 Setting.get("greeting_text"),
+        voice: "alice",
+        language: tenant.greeting_language)
     end
   end
 
   def start_voicemail(call)
+    # Used by the legacy whitelisted-voicemail path (no screening).
     tenant = call.tenant
-    call.update!(flow_state: "voicemail_prompt_playing", status: call.status)
     audio = greeting_audio_url_for(tenant, slug: "voicemail_prompt")
     if audio
       cc_client.playback_start(call.call_control_id, audio_url: audio)
@@ -400,44 +321,6 @@ class TelnyxController < ApplicationController
     call.update!(flow_state: "recording", status: :recording)
   end
 
-  # Empty transcript path. The caller didn't say anything during the
-  # gather. Two scenarios:
-  #
-  #   gather_status == "call_hangup": the caller already hung up — the
-  #   leg is dead. Don't try to play any goodbye (Telnyx returns 422
-  #   "Call has already ended"). Just mark the call unknown and notify
-  #   the operator. The follow-up call.hangup event will finalize.
-  #
-  #   gather_status == "valid"/"timeout": the call is still live. Send
-  #   the caller to voicemail rather than hanging up — many people just
-  #   need a beat to gather their thoughts after the prompt. Status is
-  #   :unknown (not :spam) since we have no signal at all about intent.
-  def mark_unknown_and_followup(call, gather_status: nil)
-    if gather_status == "call_hangup"
-      call.update!(status: :unknown, flow_state: "done")
-      NotifyJob.perform_later(call.id)
-      return
-    end
-
-    call.update!(status: :unknown)
-    start_voicemail(call)
-  end
-
-  def finish_with_spam(call, phrase:)
-    tenant = call.tenant
-    call.update!(status: :spam, flow_state: "hanging_up_after_speak")
-    NotifyJob.perform_later(call.id)
-    auto_blacklist_if_pattern_match(call)
-    audio = greeting_audio_url_for(tenant, slug: phrase)
-    if audio
-      cc_client.playback_start(call.call_control_id, audio_url: audio)
-    else
-      cc_client.speak(call.call_control_id,
-        payload: GreetingCatalog::SYSTEM_PHRASES[phrase] || "Arrivederci.",
-        voice: "alice", language: tenant.greeting_language)
-    end
-  end
-
   # === Abuse defenses ===
 
   def rate_limit_exceeded?(contact, tenant:, external:)
@@ -448,36 +331,6 @@ class TelnyxController < ApplicationController
     limit = (tenant.max_calls_per_caller_per_day || 10).to_i
     return false if limit <= 0
     contact.recent_calls_count(within: 24.hours) > limit
-  end
-
-  def auto_blacklist_if_pattern_match(call)
-    tenant  = call.tenant
-    contact = call.contact
-    return unless contact
-    return if contact.blacklisted?  # already blocked
-    return if contact.whitelisted?  # operator-trusted
-
-    threshold = (tenant.auto_blacklist_threshold || 3).to_i
-    window    = (tenant.auto_blacklist_window_days || 7).to_i
-    return if threshold <= 0 || window <= 0
-
-    count = contact.recent_spam_count(within: window.days)
-    return if count < threshold
-
-    contact.update!(blacklisted: true)
-    AuditLog.create!(
-      actor: nil,
-      tenant: tenant,
-      action: "auto_blacklist",
-      subject_type: "Contact",
-      subject_id: contact.id,
-      metadata: {
-        from: call.from_number,
-        spam_count: count,
-        window_days: window,
-        threshold: threshold
-      }
-    )
   end
 
   def forward_or_record(call, tenant)
