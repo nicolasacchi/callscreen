@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_03_150000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_03_160000) do
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "actor_id"
@@ -135,6 +135,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_150000) do
     t.boolean "voice_clone_active", default: false, null: false
     t.datetime "voice_clone_consent_at"
     t.datetime "voice_clone_rendered_at"
+    t.boolean "voice_rotation_enabled", default: false, null: false
+    t.integer "voice_rotation_index", default: 0, null: false
+    t.string "voice_rotation_voices"
     t.string "voice_sample_path"
     t.text "voicemail_prompt"
     t.index ["dedicated_number"], name: "index_tenants_on_dedicated_number", unique: true, where: "dedicated_number IS NOT NULL"

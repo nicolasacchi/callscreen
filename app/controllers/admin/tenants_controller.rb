@@ -76,10 +76,16 @@ module Admin
         :max_calls_per_caller_per_day, :auto_blacklist_threshold,
         :auto_blacklist_window_days,
         :auto_detect_language,
-        :admin, :active
+        :voice_clone_active, :voice_rotation_enabled,
+        :admin, :active,
+        { voice_rotation_voices: [] }
       ]
       permitted += [ :password, :password_confirmation ] if params[:tenant][:password].present?
-      params.require(:tenant).permit(*permitted)
+      raw = params.require(:tenant).permit(*permitted)
+      if raw.key?(:voice_rotation_voices)
+        raw[:voice_rotation_voices] = Array(raw[:voice_rotation_voices]).reject(&:blank?).join(",")
+      end
+      raw
     end
   end
 end

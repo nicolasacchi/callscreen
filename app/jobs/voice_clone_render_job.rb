@@ -1,14 +1,14 @@
 # Renders a tenant's full greeting catalog using Chatterbox cloned from
 # their uploaded voice sample. Two modes:
 #
-#  - In-container: if scripts/clone_render.py + Chatterbox are present in
-#    the container's Python env, the job invokes it directly.
-#  - Host-driven (v1 default): the production image doesn't ship with
-#    Chatterbox; the job logs an instruction and the operator runs
-#    `bin/clone_render <id>` on the host. The rendered files land in the
-#    shared storage volume which the production container reads.
+#  - In-container: production image ships /opt/tts_venv with Chatterbox.
+#    The job invokes scripts/clone_render.py inside the container via
+#    SolidQueue. Tenant.voice_clone_rendered_at is set on success.
+#  - Host-driven (legacy fallback): if the venv isn't present (e.g. an
+#    older image), the job logs an instruction and the operator runs
+#    `bin/clone_render <id>` on the host. Same shared storage volume.
 #
-# Either way, on success the job sets tenant.voice_clone_rendered_at.
+# Either way, on success the tenant.voice_clone_rendered_at gets set.
 class VoiceCloneRenderJob < ApplicationJob
   queue_as :default
   discard_on ActiveRecord::RecordNotFound
@@ -27,34 +27,35 @@ class VoiceCloneRenderJob < ApplicationJob
       run_in_container(tenant, sample_abs)
     else
       Rails.logger.info(
-        "VoiceCloneRenderJob: in-container render unavailable. " \
-        "Operator: run `bin/clone_render #{tenant.id}` on the host."
+        "VoiceCloneRenderJob: TTS venv not found (#{tts_python.inspect}). " \
+        "Run `bin/clone_render #{tenant.id}` on the host instead."
       )
-      # We don't mark rendered_at — the operator's host run sets that
-      # via a separate Tenant.update! after clone_render completes.
     end
   end
 
   private
 
   def in_container_render_available?
-    # Tests never invoke the real script — the test env's job assertions
-    # only verify the job enqueued/finished cleanly without running
-    # heavy ML code. The script-running path is exercised by the
-    # operator manually via bin/clone_render in dev.
     return false if Rails.env.test?
-    venv_python = Rails.root.join(".venv", "bin", "python").to_s
-    return false unless File.executable?(venv_python)
-    out = `#{venv_python.shellescape} -c "import chatterbox" 2>&1`
-    $?.success? && !out.include?("ImportError")
+    File.executable?(tts_python.to_s)
   rescue StandardError
     false
   end
 
+  # In production the venv lives at /opt/tts_venv (built by the
+  # Dockerfile's tts_build stage). Override via TTS_VENV_PYTHON for
+  # other deployments. Local dev fallback is .venv at the repo root.
+  def tts_python
+    return ENV["TTS_VENV_PYTHON"] if ENV["TTS_VENV_PYTHON"].present?
+    candidates = [ "/opt/tts_venv/bin/python", Rails.root.join(".venv", "bin", "python").to_s ]
+    candidates.find { |p| File.executable?(p) }
+  end
+
   def run_in_container(tenant, sample_abs)
     script = Rails.root.join("scripts", "clone_render.py").to_s
-    venv_python = Rails.root.join(".venv", "bin", "python").to_s
-    cmd = [ venv_python, script, tenant.id.to_s, "--sample", sample_abs ]
+    cmd = [ tts_python, script, tenant.id.to_s, "--sample", sample_abs ]
+
+    Rails.logger.info("VoiceCloneRenderJob: running #{cmd.join(' ')}")
     output = nil
     Open3.popen2e(*cmd) do |_in, out, wait_thr|
       output = out.read
@@ -63,7 +64,7 @@ class VoiceCloneRenderJob < ApplicationJob
         tenant.update!(voice_clone_rendered_at: Time.current)
         Rails.logger.info("VoiceCloneRenderJob: rendered tenant #{tenant.id}")
       else
-        Rails.logger.error("VoiceCloneRenderJob failed for tenant #{tenant.id}: #{output.to_s.last(2_000)}")
+        Rails.logger.error("VoiceCloneRenderJob failed for tenant #{tenant.id}: #{output.to_s.last(4_000)}")
         raise "clone_render exited non-zero"
       end
     end

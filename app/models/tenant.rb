@@ -85,6 +85,32 @@ class Tenant < ApplicationRecord
     voice_clone_active? && voice_clone_rendered_at.present?
   end
 
+  def voice_rotation_voice_list
+    voice_rotation_voices.to_s.split(",").map(&:strip).reject(&:empty?)
+  end
+
+  def voice_rotation_ready?
+    voice_rotation_enabled? && voice_rotation_voice_list.any?
+  end
+
+  # Atomically pick the next voice from the rotation list and advance
+  # the index. Modulo by the list size keeps the index small. Uses an
+  # UPDATE … RETURNING-style atomic increment via with_lock to avoid
+  # race conditions when two webhooks arrive concurrently.
+  def next_rotated_voice!
+    list = voice_rotation_voice_list
+    return nil if list.empty?
+
+    voice = nil
+    with_lock do
+      idx   = voice_rotation_index || 0
+      voice = list[idx % list.size]
+      next_idx = (idx + 1) % (list.size * 1_000)
+      update_column(:voice_rotation_index, next_idx)
+    end
+    voice
+  end
+
   private
 
   def voice_clone_active_requires_consent_and_sample

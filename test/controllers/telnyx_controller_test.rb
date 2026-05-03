@@ -389,6 +389,123 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_match(/Hi|Hello|busy/i, captured["payload"])
   end
 
+  # === Round-robin voice rotation ===
+
+  test "voice_rotation_enabled cycles through voices across consecutive calls" do
+    @tenant.update!(
+      voice_rotation_enabled: true,
+      voice_rotation_voices: "if_sara,im_nicola",
+      voice_rotation_index: 0
+    )
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "if_sara")
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "im_nicola")
+
+    captured_urls = []
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
+      .with { |req| captured_urls << JSON.parse(req.body)["audio_url"]; true }
+      .to_return(status: 200, body: '{"data":{"result":"ok"}}')
+
+    # First call → if_sara
+    seed_call(flow_state: "answered")
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+393339991111")
+    post_event answered_payload
+    Call.find_by!(call_control_id: CCID).destroy
+
+    # Second call → im_nicola
+    seed_call(flow_state: "answered")
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+393339992222")
+    post_event answered_payload
+    Call.find_by!(call_control_id: CCID).destroy
+
+    # Third call → if_sara (cycle wraps)
+    seed_call(flow_state: "answered")
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+393339993333")
+    post_event answered_payload
+
+    assert_equal 3, captured_urls.size
+    assert_match %r{/if_sara/},   captured_urls[0]
+    assert_match %r{/im_nicola/}, captured_urls[1]
+    assert_match %r{/if_sara/},   captured_urls[2]
+    assert_equal 3, @tenant.reload.voice_rotation_index
+  ensure
+    cleanup_greeting_files
+  end
+
+  test "voice_rotation_enabled with English caller swaps Italian voices to English" do
+    @tenant.update!(
+      voice_rotation_enabled: true,
+      voice_rotation_voices: "if_sara",
+      voice_rotation_index: 0
+    )
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "af_heart")
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: "{}")
+
+    seed_call(flow_state: "answered")
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+14155551234")
+    post_event answered_payload
+
+    assert_match %r{/af_heart/}, captured["audio_url"], "if_sara → af_heart for English caller"
+  ensure
+    cleanup_greeting_files
+  end
+
+  test "voice_rotation can include the cloned voice in the rotation list" do
+    @tenant.update_columns(
+      voice_sample_path: "tenant_#{@tenant.id}.wav",
+      voice_clone_consent_at: Time.current,
+      voice_clone_active: true,
+      voice_clone_rendered_at: Time.current,
+      voice_rotation_enabled: true,
+      voice_rotation_voices: "#{@tenant.cloned_voice_dir},if_sara",
+      voice_rotation_index: 0
+    )
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: @tenant.cloned_voice_dir)
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "if_sara")
+    captured_urls = []
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
+      .with { |req| captured_urls << JSON.parse(req.body)["audio_url"]; true }
+      .to_return(status: 200, body: "{}")
+
+    2.times do
+      seed_call(flow_state: "answered")
+      @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+393339994444")
+      post_event answered_payload
+      Call.find_by!(call_control_id: CCID).destroy
+    end
+
+    assert_match %r{/#{@tenant.cloned_voice_dir}/}, captured_urls[0]
+    assert_match %r{/if_sara/}, captured_urls[1]
+  ensure
+    cleanup_greeting_files
+  end
+
+  test "voice_rotation falls through to clone or default when rotated voice has no rendered file" do
+    @tenant.update!(
+      voice_rotation_enabled: true,
+      voice_rotation_voices: "if_sara,im_nicola",  # neither will be rendered
+      voice_rotation_index: 0
+    )
+    # Only im_nicola exists; if_sara doesn't.
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "im_nicola")
+
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: "{}")
+
+    seed_call(flow_state: "answered")
+    @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+393339995555")
+    post_event answered_payload
+
+    # First rotation pick was if_sara (no file) → fell through → tenant.greeting_voice = im_nicola
+    assert_match %r{/im_nicola/}, captured["audio_url"]
+  ensure
+    cleanup_greeting_files
+  end
+
   # === Cloned voice (Chatterbox) takes priority over Kokoro when ready ===
 
   test "tenant with voice_clone_ready=true plays cloned audio path (_t<id>)" do

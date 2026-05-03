@@ -45,11 +45,11 @@
     {
       "warning_type": "Mass Assignment",
       "warning_code": 70,
-      "fingerprint": "56bd6ef785ad89ad7b7f49b67b9015a4844316850a3ede3c0418ace26bd91a05",
+      "fingerprint": "b35eaa3ca8ec392c23fecab2194054903d82fae0ffdbb2e8926f19cd3934fed9",
       "check_name": "PermitAttributes",
       "message": "Potentially dangerous key allowed for mass assignment",
       "file": "app/controllers/admin/tenants_controller.rb",
-      "line": 82,
+      "line": 84,
       "link": "https://brakemanscanner.org/docs/warning_types/mass_assignment/",
       "code": "params.require(:tenant).permit(:name, :slug, :email, :mobile_number, :forward_back_number, :dedicated_number, :railsdav_username, :ntfy_url, :ntfy_priority, :greeting_variant, :greeting_voice, :greeting_tone, :greeting_language, :greeting_text, :voicemail_prompt, :spam_sensitivity, :max_recording_seconds, :screening_speech_timeout, :max_calls_per_caller_per_day, :auto_blacklist_threshold, :auto_blacklist_window_days, :admin, :active, :password, :password_confirmation)",
       "render_path": null,

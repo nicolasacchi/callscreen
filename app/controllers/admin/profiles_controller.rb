@@ -23,7 +23,7 @@ module Admin
     private
 
     def profile_params
-      params.require(:tenant).permit(
+      raw = params.require(:tenant).permit(
         :name,
         :mobile_number,
         :forward_back_number,
@@ -42,8 +42,23 @@ module Admin
         :auto_blacklist_threshold,
         :auto_blacklist_window_days,
         :auto_detect_language,
-        :voice_clone_active
+        :voice_clone_active,
+        :voice_rotation_enabled,
+        voice_rotation_voices: []
       )
+
+      # Multi-checkbox → comma-separated string (DB column is :string, not array)
+      if raw.key?(:voice_rotation_voices)
+        new_list = Array(raw[:voice_rotation_voices]).reject(&:blank?).join(",")
+        # Reset the rotation counter whenever the list changes so the
+        # cycle restarts cleanly from the first voice.
+        if new_list != current_tenant.voice_rotation_voices.to_s
+          raw[:voice_rotation_index] = 0
+        end
+        raw[:voice_rotation_voices] = new_list
+      end
+
+      raw
     end
   end
 end

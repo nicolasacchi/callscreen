@@ -53,16 +53,60 @@
 
   <hr style="border: 0; border-top: 1px solid var(--border); margin: 1.25rem 0;">
 
-  <h4>Activate the cloned voice</h4>
+  <h4>Voice options</h4>
   <% form_disabled = !@tenant.voice_sample_path.present? %>
+  <%
+    rotation_choices = [
+      [ "if_sara",    "Italian female (warm) — if_sara" ],
+      [ "im_nicola",  "Italian male (calm) — im_nicola" ],
+      [ "af_heart",   "English female (warm) — af_heart" ],
+      [ "am_michael", "English male (calm) — am_michael" ]
+    ]
+    if @tenant.voice_clone_rendered_at
+      rotation_choices.unshift([ @tenant.cloned_voice_dir, "My cloned voice (#{@tenant.cloned_voice_dir})" ])
+    end
+    selected_rotation = @tenant.voice_rotation_voice_list
+  %>
   <%= form_with(model: @tenant, url: admin_profile_path, method: :patch) do |f| %>
     <div class="form-group form-check">
       <%= f.check_box :voice_clone_active, disabled: form_disabled %>
-      <%= f.label :voice_clone_active, "Use my cloned voice for callers (instead of default Kokoro)" %>
+      <%= f.label :voice_clone_active, "Use my cloned voice for callers (when rotation is OFF)" %>
       <% if form_disabled %>
         <small style="display: block; color: var(--text-muted);">Upload a voice sample first to enable.</small>
       <% end %>
     </div>
+
+    <div class="form-group form-check" style="margin-top: 1rem;">
+      <%= f.check_box :voice_rotation_enabled %>
+      <%= f.label :voice_rotation_enabled, "Round-robin: rotate through several voices, one per call" %>
+      <small style="display: block; color: var(--text-muted);">
+        When ON, each incoming call uses the next voice in the list below. Overrides
+        both the cloned voice and the default voice selectors. Counter persists across
+        deploys; current position: <code><%= @tenant.voice_rotation_index %></code>.
+      </small>
+    </div>
+
+    <div class="form-group" style="margin-left: 1.5rem;">
+      <label>Voices to include in the rotation:</label>
+      <%# Hidden empty value so the param always arrives, even when no boxes are ticked %>
+      <input type="hidden" name="tenant[voice_rotation_voices][]" value="">
+      <% rotation_choices.each do |voice_id, label| %>
+        <div class="form-check">
+          <input type="checkbox"
+                 name="tenant[voice_rotation_voices][]"
+                 id="rotation_<%= voice_id %>"
+                 value="<%= voice_id %>"
+                 <%= "checked" if selected_rotation.include?(voice_id) %>>
+          <label for="rotation_<%= voice_id %>"><%= label %></label>
+        </div>
+      <% end %>
+      <small style="display: block; color: var(--text-muted); margin-top: 0.25rem;">
+        For each English caller (auto-detected), Italian voices in the rotation are
+        automatically swapped to their English counterpart (<code>if_sara→af_heart</code>,
+        <code>im_nicola→am_michael</code>) so the language always matches.
+      </small>
+    </div>
+
     <%= f.submit "Save", class: "btn btn-primary" %>
   <% end %>
 </div>
