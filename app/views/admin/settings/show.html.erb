@@ -10,19 +10,75 @@
     <dt>Forward to (your mobile)</dt>
     <dd><%= forward_number %> <small style="color: var(--text-muted);">(set via <code>CALLSCREEN_FORWARD_NUMBER</code> in traefik .env)</small></dd>
   </dl>
-  <p style="margin-top: 0.75rem;">
-    <strong>Carrier-side forwarding (Italy)</strong> — dial these from your mobile to send unanswered/busy/unreachable calls
-    through the screener. <strong>Use conditional only</strong>; unconditional <code>**21*</code> creates a loop with the
-    whitelist Dial-back.
+</div>
+
+<div class="card">
+  <h3>Carrier-side forwarding — Italian MMI codes</h3>
+  <p>
+    Dial these strings from <strong>your mobile</strong> (not from another phone) to configure when calls
+    get sent to the screener. Codes are standard GSM/3GPP and work on TIM, Vodafone, WindTre, Iliad,
+    PosteMobile, ho. and Kena Mobile. The mobile beeps and shows a confirmation message after each.
+  </p>
+
+  <h4 style="margin-top: 1rem; color: var(--text);">Recommended: conditional forwarding (smart)</h4>
+  <p style="font-size: 0.85rem; color: var(--text-muted);">
+    Caller's number stays in the call log on your mobile. Your phone rings first; the screener kicks
+    in only when you can't answer. <strong>This is the default setup for most users.</strong>
   </p>
   <pre style="background: var(--bg); padding: 0.75rem; border-radius: 6px; font-size: 0.8rem;">
-**61*<%= telnyx_number %>**20#    forward when no answer (after 20s)
-**67*<%= telnyx_number %>#        forward when busy
-**62*<%= telnyx_number %>#        forward when unreachable
-##61#                          disable no-answer forward
-##67#                          disable busy forward
-##62#                          disable unreachable forward
-##002#                         disable ALL forwarding (panic button)</pre>
+**61*<%= telnyx_number %>**5#     forward after  5s of ringing (no answer)
+**61*<%= telnyx_number %>**10#    forward after 10s of ringing
+**61*<%= telnyx_number %>**15#    forward after 15s of ringing
+**61*<%= telnyx_number %>**20#    forward after 20s of ringing  ← typical
+**61*<%= telnyx_number %>**25#    forward after 25s of ringing
+**61*<%= telnyx_number %>**30#    forward after 30s of ringing  ← max
+
+**67*<%= telnyx_number %>#        forward when line is busy
+**62*<%= telnyx_number %>#        forward when phone is off / no signal
+
+**004*<%= telnyx_number %>**20#   ALL three at once: no-answer (20s) + busy + unreachable
+                              (recommended one-shot setup for complete screening)</pre>
+  <p style="font-size: 0.85rem; color: var(--text-muted);">
+    The seconds value (<code>5/10/15/20/25/30</code>) <strong>must be a multiple of 5</strong>. Anything else
+    is silently rounded down by the carrier. Keep it &gt; the screener Dial-back timeout (15s) by at least
+    5 seconds, otherwise legitimate dial-backs to whitelisted callers get re-forwarded back to the
+    Telnyx number — a loop.
+  </p>
+
+  <h4 style="margin-top: 1.25rem; color: var(--text);">Unconditional forwarding (everything to screener)</h4>
+  <p style="font-size: 0.85rem; color: var(--text-muted);">
+    Every call goes to the screener immediately — your mobile never rings. Useful when you're abroad
+    without roaming, in a meeting all day, or want to silence everything for a while.
+    <strong style="color: var(--warning);">⚠ This breaks dial-back to whitelisted callers</strong> (the
+    Telnyx → mobile call gets forwarded straight back to Telnyx — infinite loop). Use only when you
+    don't need any incoming calls to actually reach you.
+  </p>
+  <pre style="background: var(--bg); padding: 0.75rem; border-radius: 6px; font-size: 0.8rem;">
+**21*<%= telnyx_number %>#        forward EVERY call immediately, mobile never rings</pre>
+
+  <h4 style="margin-top: 1.25rem; color: var(--text);">Disable forwarding</h4>
+  <pre style="background: var(--bg); padding: 0.75rem; border-radius: 6px; font-size: 0.8rem;">
+##61#       disable no-answer forward
+##67#       disable busy forward
+##62#       disable unreachable forward
+##004#      disable conditional bundle (61 + 67 + 62 at once)
+##21#       disable unconditional forward
+##002#      disable EVERYTHING (panic button — kills all forwards at once)</pre>
+
+  <h4 style="margin-top: 1.25rem; color: var(--text);">Check current forwarding state</h4>
+  <pre style="background: var(--bg); padding: 0.75rem; border-radius: 6px; font-size: 0.8rem;">
+*#61#       show no-answer forward target + ring duration
+*#67#       show busy forward target
+*#62#       show unreachable forward target
+*#21#       show unconditional forward target
+*#002#      show ALL forwarding state</pre>
+
+  <p style="margin-top: 1rem; padding: 0.75rem; background: rgba(99,102,241,0.08); border-left: 3px solid var(--primary); border-radius: 4px; font-size: 0.85rem;">
+    <strong>Recommended setup for the typical user:</strong>
+    <code>**004*<%= telnyx_number %>**20#</code> — single command activates the screener for no-answer
+    (after 20s), busy, and unreachable in one go. Verify with <code>*#002#</code>. Disable later
+    with <code>##002#</code>.
+  </p>
 </div>
 
 <%= form_tag admin_settings_path, method: :patch, class: "card" do %>
