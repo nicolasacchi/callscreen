@@ -136,7 +136,12 @@ class GreetingCatalog
     "if_sara"    => "Italian female (warm)",
     "im_nicola"  => "Italian male (calm)",
     "af_heart"   => "English female (warm)",
-    "am_michael" => "English male (calm)"
+    "am_michael" => "English male (calm)",
+    # Chatterbox built-in default voices — no sample needed. Different
+    # tonal character from Kokoro (more expressive), useful for rotation
+    # variety or for tenants who prefer the Chatterbox sound.
+    "cb_it"      => "Italian (Chatterbox default)",
+    "cb_en"      => "English (Chatterbox default)"
   }.freeze
 
   VOICE_SLUGS = VOICES.keys.freeze
@@ -149,6 +154,8 @@ class GreetingCatalog
     "im_nicola"  => { "it" => "im_nicola",  "en" => "am_michael" },
     "af_heart"   => { "it" => "if_sara",    "en" => "af_heart"   },
     "am_michael" => { "it" => "im_nicola",  "en" => "am_michael" },
+    "cb_it"      => { "it" => "cb_it",      "en" => "cb_en"      },
+    "cb_en"      => { "it" => "cb_it",      "en" => "cb_en"      },
     # Telnyx fallback voices map to the same English voice — they're
     # not pre-rendered, so the controller falls back to Telnyx's
     # built-in `alice` regardless.

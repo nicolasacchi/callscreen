@@ -43,6 +43,35 @@ class NtfyNotifierTest < ActiveSupport::TestCase
     end
   end
 
+  test "no Actions header when call: not passed" do
+    stub_request(:post, @url).to_return(status: 200)
+    NtfyNotifier.notify(title: "x", message: "y")
+    assert_requested :post, @url do |req|
+      !req.headers.key?("Actions")
+    end
+  end
+
+  test "Actions header has 3 segments and embeds tel: URI when call: is passed" do
+    tenant = tenants(:default)
+    call = tenant.calls.create!(
+      call_sid: "actions-test-1", call_control_id: "actions-test-1",
+      from_number: "+393331112222", status: :spam
+    )
+    stub_request(:post, @url).to_return(status: 200)
+
+    NtfyNotifier.notify(title: "x", message: "y", call: call)
+
+    assert_requested :post, @url do |req|
+      h = req.headers["Actions"]
+      h.is_a?(String) &&
+        h.scan(/;/).size == 2 &&  # 3 actions => 2 separators
+        h.include?("Whitelist") &&
+        h.include?("Mark spam") &&
+        h.include?("tel:+393331112222") &&
+        h.include?("/ntfy/calls/#{call.id}/whitelist")
+    end
+  end
+
   test "does NOT warn before threshold is reached" do
     stub_request(:post, @url).to_raise(SocketError.new("boom"))
 

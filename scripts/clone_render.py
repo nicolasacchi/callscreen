@@ -35,7 +35,13 @@ CALLSCREEN_ROOT = Path(__file__).resolve().parent.parent
 CATALOG_FILE = CALLSCREEN_ROOT / "app" / "models" / "greeting_catalog.rb"
 GREETINGS_DIR = CALLSCREEN_ROOT / "storage" / "greetings"
 SAMPLES_DIR = CALLSCREEN_ROOT / "storage" / "voice_samples"
-DEV_DB = CALLSCREEN_ROOT / "storage" / "development.sqlite3"
+# Resolve the SQLite path from RAILS_ENV (defaults to development) so the
+# script works under both dev and production containers without hardcoding.
+import os
+RAILS_ENV = os.environ.get("RAILS_ENV", "development")
+DB_PATH = CALLSCREEN_ROOT / "storage" / f"{RAILS_ENV}.sqlite3"
+# Backwards-compat alias kept so older callers don't break.
+DEV_DB = DB_PATH
 
 # Language → Chatterbox language_id (Multilingual model)
 LANG_ID = {"it": "it", "en": "en"}
@@ -93,9 +99,9 @@ def parse_catalog(path: Path) -> dict[str, dict[str, str]]:
 
 def lookup_sample_from_db(tenant_id: int) -> str | None:
     """Best-effort SQLite lookup so we don't have to require Rails."""
-    if not DEV_DB.exists():
+    if not DB_PATH.exists():
         return None
-    conn = sqlite3.connect(str(DEV_DB))
+    conn = sqlite3.connect(str(DB_PATH))
     try:
         cur = conn.execute(
             "SELECT voice_sample_path FROM tenants WHERE id = ?", (tenant_id,)
@@ -106,7 +112,37 @@ def lookup_sample_from_db(tenant_id: int) -> str | None:
         conn.close()
 
 
-def render_all(tenant_id: int, sample_path: Path, dry_run: bool = False) -> int:
+def load_phrases_from_db(tenant_id: int) -> dict[str, dict[str, str]]:
+    """Returns {slug: {lang: text}} for phrases visible to this tenant
+    (shared system rows with tenant_id IS NULL plus the tenant's own
+    user-authored phrases). Replaces the old regex-parse of
+    greeting_catalog.rb when invoked with --from-db."""
+    if not DB_PATH.exists():
+        return {}
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        cur = conn.execute(
+            """
+            SELECT slug, text_it, text_en FROM phrases
+            WHERE tenant_id IS NULL OR tenant_id = ?
+            ORDER BY id
+            """,
+            (tenant_id,),
+        )
+        out: dict = {}
+        for slug, text_it, text_en in cur.fetchall():
+            texts = {}
+            texts["it"] = text_it if text_it else None
+            texts["en"] = text_en if text_en else None
+            texts = {k: v for k, v in texts.items() if v}
+            if texts:
+                out[slug] = texts
+        return out
+    finally:
+        conn.close()
+
+
+def render_all(tenant_id: int, sample_path: Path, dry_run: bool = False, from_db: bool = False) -> int:
     if not sample_path.exists():
         print(f"FATAL: sample file not found: {sample_path}", file=sys.stderr)
         return 2
@@ -120,8 +156,14 @@ def render_all(tenant_id: int, sample_path: Path, dry_run: bool = False) -> int:
         print("       Install: pip install chatterbox-tts", file=sys.stderr)
         return 3
 
-    catalog = parse_catalog(CATALOG_FILE)
-    catalog.update(SYSTEM_PHRASES)
+    if from_db:
+        catalog = load_phrases_from_db(tenant_id)
+        if not catalog:
+            print(f"FATAL: --from-db requested but no phrases found in {DB_PATH}", file=sys.stderr)
+            return 4
+    else:
+        catalog = parse_catalog(CATALOG_FILE)
+        catalog.update(SYSTEM_PHRASES)
     cloned_dir = f"_t{tenant_id}"
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -184,6 +226,10 @@ def main() -> int:
                         help="Path to sample WAV/MP3. If omitted, looked up via SQLite.")
     parser.add_argument("--dry-run", action="store_true",
                         help="List output paths without rendering")
+    parser.add_argument("--from-db", action="store_true",
+                        help="Read phrase set from the SQLite phrases table instead of "
+                             "regex-parsing greeting_catalog.rb. Required once the rewrite "
+                             "is live so user-authored phrases get rendered too.")
     args = parser.parse_args()
 
     sample = args.sample
@@ -195,7 +241,7 @@ def main() -> int:
             return 2
         sample = SAMPLES_DIR / sp
 
-    return render_all(args.tenant_id, sample, dry_run=args.dry_run)
+    return render_all(args.tenant_id, sample, dry_run=args.dry_run, from_db=args.from_db)
 
 
 if __name__ == "__main__":

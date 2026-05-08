@@ -14,6 +14,15 @@ class RecordingsController < ApplicationController
     return head :not_found unless call.call_sid.to_s.match?(FILENAME_FORMAT)
 
     path = RECORDINGS_ROOT.join("#{call.call_sid}.wav")
+    if !path.exist? && call.recording_url.present?
+      begin
+        absolute = RecordingDownloader.fetch(call)
+        call.update!(recording_local_path: absolute)
+      rescue StandardError => e
+        Rails.logger.warn("RecordingsController: Telnyx fallback failed for call #{call.id}: #{e.class}: #{e.message}")
+        return head :not_found
+      end
+    end
     return head :not_found unless path.exist?
 
     send_file path, type: "audio/wav", disposition: :inline

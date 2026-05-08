@@ -274,6 +274,39 @@ class ScreeningJobTest < ActiveJob::TestCase
     refute @contact.reload.blacklisted
   end
 
+  # === Cost tracking ===
+
+  test "LLM classification persists tokens, source=llm, and moonshot_cost_usd" do
+    stub_whisper("hello")
+    stub_moonshot("legit", 0.9, "ok", usage: { prompt_tokens: 412, completion_tokens: 64 })
+
+    ScreeningJob.new.perform(@call.id)
+
+    @call.reload
+    assert_equal "llm", @call.ai_classification_source
+    assert_equal 412, @call.moonshot_tokens_in
+    assert_equal 64,  @call.moonshot_tokens_out
+    expected_cost = Pricing.moonshot_usd(412, 64)
+    assert_in_delta expected_cost, @call.moonshot_cost_usd.to_f, 1e-9
+    # Token fields must NOT leak into ai_classification JSON.
+    assert_not @call.ai_classification.key?("tokens_in")
+    assert_not @call.ai_classification.key?("tokens_out")
+  end
+
+  test "keyword-block path sets source=keyword and zero moonshot cost" do
+    @tenant.rules.create!(rule_type: :keyword, action: :block, value: "warranty", active: true)
+    stub_whisper("about your warranty")
+    moonshot_stub = stub_request(:post, "https://api.moonshot.ai/v1/chat/completions")
+
+    ScreeningJob.new.perform(@call.id)
+
+    assert_not_requested moonshot_stub
+    @call.reload
+    assert_equal "keyword", @call.ai_classification_source
+    assert_equal 0.0, @call.moonshot_cost_usd.to_f
+    assert_nil @call.moonshot_tokens_in
+  end
+
   # === Failure path ===
 
   test "Whisper non-2xx → empty transcript → status=unknown (Whisper swallows errors)" do
@@ -310,11 +343,12 @@ class ScreeningJobTest < ActiveJob::TestCase
       .to_return(status: 200, body: body, headers: { "Content-Type" => "application/json" })
   end
 
-  def stub_moonshot(classification, confidence, reason)
-    body = {
+  def stub_moonshot(classification, confidence, reason, usage: { prompt_tokens: 400, completion_tokens: 60 })
+    payload = {
       choices: [ { message: { content: { classification:, confidence:, reason: }.to_json } } ]
-    }.to_json
+    }
+    payload[:usage] = usage if usage
     stub_request(:post, "https://api.moonshot.ai/v1/chat/completions")
-      .to_return(status: 200, body: body, headers: { "Content-Type" => "application/json" })
+      .to_return(status: 200, body: payload.to_json, headers: { "Content-Type" => "application/json" })
   end
 end

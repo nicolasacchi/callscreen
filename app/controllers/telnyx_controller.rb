@@ -118,7 +118,10 @@ class TelnyxController < ApplicationController
           "classification" => "spam",
           "confidence" => 1.0,
           "reason" => "Rate limited (more than #{limit} calls in 24h)"
-        }
+        },
+        ai_classification_source: "rate_limit",
+        telnyx_cost_usd: 0.0,
+        moonshot_cost_usd: 0.0
       )
       NotifyJob.perform_later(call.id)
       cc_client.reject(ccid)
@@ -136,7 +139,10 @@ class TelnyxController < ApplicationController
             "classification" => "spam",
             "confidence" => 1.0,
             "reason" => "Railsdav policy: block (#{external.addressbook})"
-          }
+          },
+          ai_classification_source: "railsdav",
+          telnyx_cost_usd: 0.0,
+          moonshot_cost_usd: 0.0
         )
         NotifyJob.perform_later(call.id)
         cc_client.reject(ccid)
@@ -150,7 +156,13 @@ class TelnyxController < ApplicationController
 
     # 2. Local blacklist (operator override)
     if contact.blacklisted?
-      call.update!(status: :spam, flow_state: "done")
+      call.update!(
+        status: :spam,
+        flow_state: "done",
+        ai_classification_source: "blacklist",
+        telnyx_cost_usd: 0.0,
+        moonshot_cost_usd: 0.0
+      )
       cc_client.reject(ccid)
       return
     end
@@ -167,7 +179,13 @@ class TelnyxController < ApplicationController
     if rule_match
       rule_match.increment!(:hit_count)
       if rule_match.action_block?
-        call.update!(status: :spam, flow_state: "done")
+        call.update!(
+          status: :spam,
+          flow_state: "done",
+          ai_classification_source: "rule",
+          telnyx_cost_usd: 0.0,
+          moonshot_cost_usd: 0.0
+        )
         NotifyJob.perform_later(call.id)
         cc_client.reject(ccid)
         return
@@ -188,6 +206,8 @@ class TelnyxController < ApplicationController
     ccid = p["call_control_id"]
     call = Call.find_by(call_control_id: ccid)
     return unless call
+
+    call.update!(answered_at: Time.current) if call.answered_at.nil?
 
     case call.flow_state
     when "answered"
@@ -272,10 +292,31 @@ class TelnyxController < ApplicationController
     call = Call.find_by(call_control_id: ccid)
     return unless call
 
+    finalize_billing(call)
+
     call.update!(flow_state: "done") unless call.flow_state == "done"
     if call.contact.present?
       call.contact.update!(last_called_at: Time.current)
     end
+  end
+
+  # Captures hung_up_at and derives billable_seconds + telnyx_cost_usd
+  # from the answered_at..hung_up_at window. Calls rejected before answer
+  # have answered_at = nil and are billed at $0 (already set on the
+  # reject paths).
+  def finalize_billing(call)
+    return if call.hung_up_at.present?  # idempotent; Telnyx may retry
+
+    now = Time.current
+    attrs = { hung_up_at: now }
+    if call.answered_at.present?
+      seconds = (now - call.answered_at).to_i.clamp(0, 7200)
+      attrs[:billable_seconds] = seconds
+      attrs[:telnyx_cost_usd]  = Pricing.telnyx_voice_usd(seconds)
+    elsif call.telnyx_cost_usd.nil?
+      attrs[:telnyx_cost_usd] = 0.0
+    end
+    call.update!(attrs)
   end
 
   # === Tenant resolution ===
@@ -306,16 +347,14 @@ class TelnyxController < ApplicationController
   # call.playback.ended (state=hanging_up_after_speak) issues the hangup.
   def play_goodbye(call, phrase:)
     tenant = call.tenant
-    lang = caller_language(call)
-    audio = greeting_audio_url_for(tenant, slug: phrase, language: lang)
+    lang  = caller_language(call)
+    voice = pick_voice_for_call!(call)
+    audio = greeting_audio_url_for(tenant, slug: phrase, language: lang, voice: voice)
     if audio
       cc_client.playback_start(call.call_control_id, audio_url: audio)
     else
-      text = GreetingCatalog::SYSTEM_PHRASES.dig(phrase, lang) ||
-             GreetingCatalog::SYSTEM_PHRASES.dig(phrase, "it") ||
-             "Arrivederci."
       cc_client.speak(call.call_control_id,
-        payload: text,
+        payload: phrase_text(phrase, lang) || "Arrivederci.",
         voice: "alice",
         language: language_locale(lang))
     end
@@ -323,31 +362,67 @@ class TelnyxController < ApplicationController
 
   def play_greeting(call)
     tenant = call.tenant
-    lang = caller_language(call)
-    audio  = greeting_audio_url_for(tenant, slug: tenant.greeting_variant, language: lang)
+    lang   = caller_language(call)
+    now    = e2e_injected_time || Time.current
+    phrase = PhrasePoolResolver.new(call: call, now: now).resolve!
+    voice  = pick_voice_for_call!(call)
+    if phrase
+      call.update_columns(selected_phrase_slug: phrase.slug)
+      Rails.logger.info("phrase_resolver: call_control_id=#{call.call_control_id} slug=#{phrase.slug} voice=#{voice}")
+    end
+    slug   = phrase&.slug || tenant.greeting_variant
+    audio  = greeting_audio_url_for(tenant, slug: slug, language: lang, voice: voice)
 
     if audio
       cc_client.playback_start(call.call_control_id, audio_url: audio)
     else
       cc_client.speak(call.call_control_id,
-        payload: GreetingCatalog.text_for(tenant.greeting_variant, language: lang) ||
-                 tenant.greeting_text ||
-                 Setting.get("greeting_text"),
+        payload: phrase_text(slug, lang) || tenant.greeting_text || Setting.get("greeting_text"),
         voice: "alice",
         language: language_locale(lang))
     end
   end
 
-  # Language to use for greeting + Whisper. Either auto-detected from the
-  # caller's E.164 prefix (Italian if +39, English otherwise) or pinned to
-  # the tenant's configured greeting_language when auto-detect is off.
-  def caller_language(call)
+  # Picks the voice to use for every audio segment of this call's
+  # lifetime (greeting + goodbye + voicemail prompt). Advances the
+  # rotation cursor at most once per call by caching the picked voice
+  # on `Call#selected_voice`. Subsequent invocations return the cached
+  # value, so a single call never advances the cursor twice.
+  def pick_voice_for_call!(call)
+    return call.selected_voice if call.selected_voice.present?
     tenant = call.tenant
-    if tenant.auto_detect_language
-      GreetingCatalog.language_for_number(call.from_number)
-    else
-      tenant.greeting_language.to_s.start_with?("it") ? "it" : "en"
+    voice =
+      if tenant.voice_rotation_ready?
+        tenant.next_rotated_voice!
+      elsif tenant.voice_clone_ready?
+        tenant.cloned_voice_dir
+      else
+        tenant.greeting_voice
+      end
+    call.update_columns(selected_voice: voice) if voice.present?
+    voice
+  end
+
+  # Returns the text for a phrase by slug, preferring the DB Phrase row
+  # (which may have been edited by the user), falling back to the
+  # legacy GreetingCatalog constants while the rewrite is in flight.
+  def phrase_text(slug, lang)
+    return nil if slug.blank?
+    p = Phrase.find_by(slug: slug.to_s)
+    if p && p.text(lang).present?
+      return p.text(lang)
     end
+    GreetingCatalog.text_for(slug, language: lang) ||
+      GreetingCatalog::SYSTEM_PHRASES.dig(slug.to_s, lang) ||
+      GreetingCatalog::SYSTEM_PHRASES.dig(slug.to_s, "it")
+  end
+
+  # Language to use for greeting + Whisper. Delegates to LanguageResolver
+  # which centralizes contact override + auto-detect + pinned-language
+  # precedence. Kept here as a thin wrapper for backwards compat with
+  # any in-flight callers within this controller.
+  def caller_language(call)
+    LanguageResolver.for(call)
   end
 
   # Map two-letter language code to full Telnyx-accepted locale.
@@ -358,15 +433,14 @@ class TelnyxController < ApplicationController
   def start_voicemail(call)
     # Used by the legacy whitelisted-voicemail path (no screening).
     tenant = call.tenant
-    lang = caller_language(call)
-    audio = greeting_audio_url_for(tenant, slug: "voicemail_prompt", language: lang)
+    lang  = caller_language(call)
+    voice = pick_voice_for_call!(call)
+    audio = greeting_audio_url_for(tenant, slug: "voicemail_prompt", language: lang, voice: voice)
     if audio
       cc_client.playback_start(call.call_control_id, audio_url: audio)
     else
-      text = GreetingCatalog::SYSTEM_PHRASES.dig("voicemail_prompt", lang) ||
-             GreetingCatalog::SYSTEM_PHRASES.dig("voicemail_prompt", "it")
       cc_client.speak(call.call_control_id,
-        payload: text,
+        payload: phrase_text("voicemail_prompt", lang),
         voice: "alice", language: language_locale(lang))
     end
     cc_client.record_start(call.call_control_id,
@@ -384,7 +458,7 @@ class TelnyxController < ApplicationController
     return false if external.matched? && external.policy == "allow"
     limit = (tenant.max_calls_per_caller_per_day || 10).to_i
     return false if limit <= 0
-    contact.recent_calls_count(within: 24.hours) > limit
+    contact.recent_calls_count(within: 15.minutes) > limit
   end
 
   def forward_or_record(call, tenant)
@@ -409,11 +483,29 @@ class TelnyxController < ApplicationController
   #
   # Returns nil if no rendered file exists at any tier → caller falls
   # back to Telnyx <speak> in the parent helper.
-  def greeting_audio_url_for(tenant, slug:, language: nil)
+  #
+  # When `voice:` is given (the supported path post-2026-05-07), the
+  # method skips rotation/clone selection entirely and just builds the
+  # URL for the picked voice. The rotation cursor advance happens
+  # exactly once per call in `pick_voice_for_call!`. Falls back to the
+  # tenant's default greeting_voice if the file is missing for the
+  # picked voice. The legacy code path (no `voice:`) is preserved as a
+  # safety net for any caller that hasn't been migrated.
+  def greeting_audio_url_for(tenant, slug:, language: nil, voice: nil)
     return nil unless slug
-    return nil unless GreetingCatalog::ALL_SLUGS.include?(slug.to_s)
+    # Slug must reference a known Phrase (DB-backed allowlist) — falls
+    # back to GreetingCatalog::ALL_SLUGS for any in-flight references
+    # the rewrite hasn't migrated yet.
+    return nil unless Phrase.where(slug: slug.to_s).exists? ||
+                      GreetingCatalog::ALL_SLUGS.include?(slug.to_s)
     tone = tenant.greeting_tone
     return nil unless GreetingCatalog::TONE_SLUGS.include?(tone.to_s)
+
+    if voice.present?
+      url = audio_url_for_voice(slug: slug, voice: voice, tone: tone, language: language)
+      return url if url
+      return audio_url_for_voice(slug: slug, voice: tenant.greeting_voice, tone: tone, language: language)
+    end
 
     # 1. Rotation (when enabled). The rotation list can mix Kokoro voice
     # ids and the cloned-voice _t<id>; both are handled by audio_url_for_voice.
@@ -475,6 +567,7 @@ class TelnyxController < ApplicationController
   def verify_telnyx_request
     return if signature_valid?
     return if fallback_token_valid?
+    return if synthetic_token_valid?
     head :unauthorized
   end
 
@@ -497,5 +590,30 @@ class TelnyxController < ApplicationController
 
   def fallback_enabled?
     ENV["WEBHOOK_TOKEN"].present? && ENV["WEBHOOK_TOKEN_FALLBACK"] != "0"
+  end
+
+  # Separate auth path for `bin/synthetic_call`. Requires a distinct env
+  # var (SYNTHETIC_WEBHOOK_TOKEN) which is unset by default, so this is
+  # opt-in per-deployment and never accidentally exposes the live
+  # webhook surface to anonymous requests. The synthetic script signs
+  # its events with this token in the `?synthetic_token=…` param.
+  def synthetic_token_valid?
+    expected = ENV["SYNTHETIC_WEBHOOK_TOKEN"].to_s
+    return false if expected.empty?
+    ActiveSupport::SecurityUtils.secure_compare(params[:synthetic_token].to_s, expected)
+  end
+
+  # Optional time injection for e2e tests, gated on synthetic auth so
+  # production Telnyx requests can never inject. Strict ISO8601 with
+  # explicit timezone offset; on parse failure we log and fall back to
+  # Time.current rather than silently masking the bug.
+  def e2e_injected_time
+    return nil unless synthetic_token_valid?
+    raw = request.headers["X-E2E-Now"]
+    return nil if raw.blank?
+    Time.zone.iso8601(raw)
+  rescue ArgumentError
+    Rails.logger.warn("X-E2E-Now: parse failed for #{raw.inspect}; ignoring")
+    nil
   end
 end

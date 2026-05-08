@@ -3,10 +3,19 @@ default: &default
     - polling_interval: 1
       batch_size: 500
   workers:
-    - queues: "*"
+    # Foreground queue: ScreeningJob, NotifyJob, VoiceCloneRenderJob — keep 3
+    # threads dedicated so a render storm on the rendering queue can't starve
+    # call processing.
+    - queues: "default"
       threads: 3
       processes: <%= ENV.fetch("JOB_CONCURRENCY", 1) %>
       polling_interval: 0.1
+    # Background render queue: PhraseRenderJob, PhraseCleanupJob. Single
+    # thread so we don't oversubscribe the CPU during bulk renders.
+    - queues: "rendering"
+      threads: 1
+      processes: 1
+      polling_interval: 0.5
 
 development:
   <<: *default

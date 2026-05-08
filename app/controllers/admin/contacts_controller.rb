@@ -34,6 +34,8 @@ module Admin
 
     def update
       @contact = viewing_tenant.contacts.find(params[:id])
+      assign_phrase_ids(@contact)
+      assign_tag_names(@contact)
       if @contact.update(contact_params)
         redirect_to admin_contact_path(@contact), notice: "Contact updated."
       else
@@ -50,7 +52,25 @@ module Admin
     private
 
     def contact_params
-      params.require(:contact).permit(:phone, :name, :whitelisted, :blacklisted, :notes)
+      params.require(:contact).permit(:phone, :name, :whitelisted, :blacklisted, :notes, :language)
+    end
+
+    def assign_phrase_ids(contact)
+      return unless params.dig(:contact, :phrase_ids)
+      ids = Array(params[:contact][:phrase_ids]).map(&:to_i).reject(&:zero?)
+      visible = Phrase.visible_to(viewing_tenant).where(id: ids).pluck(:id)
+      contact.phrase_ids = visible
+      # Reset cursor when the pool changes so rotation restarts cleanly.
+      contact.update_columns(phrase_rotation_index: 0) if contact.persisted?
+    end
+
+    def assign_tag_names(contact)
+      return unless params.dig(:contact, :tag_names)
+      names = params[:contact][:tag_names].to_s.split(",").map(&:strip).reject(&:empty?).uniq
+      tags = names.map do |n|
+        Tag.find_or_create_by!(tenant: viewing_tenant, name: n)
+      end
+      contact.tags = tags
     end
   end
 end

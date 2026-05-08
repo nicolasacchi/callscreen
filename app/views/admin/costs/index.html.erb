@@ -1,0 +1,191 @@
+<style>
+  .period-tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; }
+  .period-tabs a {
+    padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.875rem;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .period-tabs a.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+  .scope-label { color: var(--text-muted); font-size: 0.875rem; margin-bottom: 1rem; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  table.heatmap { table-layout: fixed; width: 100%; background: transparent; border: none; }
+  table.heatmap th, table.heatmap td { padding: 2px; border: none; font-size: 0.7rem; background: transparent; }
+  table.heatmap th { color: var(--text-muted); font-weight: 400; text-align: center; text-transform: none; letter-spacing: normal; }
+  table.heatmap th.row-label { text-align: right; padding-right: 0.5rem; width: 36px; }
+  table.heatmap td.cell { height: 18px; border-radius: 2px; }
+  table.heatmap tr:hover td { background: inherit; }
+
+  .footnote { color: var(--text-muted); font-size: 0.75rem; margin-top: 1.5rem; }
+</style>
+
+<h1>Costs</h1>
+
+<div class="scope-label">
+  Scope: <strong style="color: var(--text);"><%= @scope_label %></strong>
+  <% if super_admin? && params[:tenant_id].present? %>
+    — <%= link_to "view all tenants", admin_costs_path(period: @period_key), style: "font-size: 0.75rem;" %>
+  <% end %>
+</div>
+
+<div class="period-tabs">
+  <% Admin::CostsController::PERIODS.each_key do |key| %>
+    <%= link_to key, admin_costs_path(period: key, tenant_id: params[:tenant_id]),
+                class: ("active" if @period_key == key) %>
+  <% end %>
+</div>
+
+<div class="stats">
+  <div class="stat-card">
+    <div class="label">Total (<%= @period_days %>d)</div>
+    <div class="value"><%= number_to_currency(@total, unit: "$", precision: 4) %></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Telnyx voice</div>
+    <div class="value"><%= number_to_currency(@total_telnyx, unit: "$", precision: 4) %></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Moonshot LLM</div>
+    <div class="value"><%= number_to_currency(@total_moonshot, unit: "$", precision: 4) %></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">$ / call</div>
+    <div class="value"><%= number_to_currency(@avg_per_call, unit: "$", precision: 4) %></div>
+    <div class="label" style="margin-top: 0.25rem;"><%= @call_count %> calls</div>
+  </div>
+</div>
+
+<div class="chart-container">
+  <h3 style="margin-bottom: 0.5rem; font-size: 0.875rem; color: var(--text-muted);">
+    Daily spend (<%= @period_days %> days)
+  </h3>
+  <%= area_chart @chart_data,
+                 stacked: true,
+                 colors: ["#6366f1", "#22c55e"],
+                 round: 4,
+                 prefix: "$",
+                 library: { scales: { y: { beginAtZero: true } } } %>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h3>Top contacts</h3>
+    <% if @top_contacts.any? && @top_contacts.first[:total] > 0 %>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Caller</th>
+            <th style="text-align: right;">Spend</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @top_contacts.each_with_index do |row, idx| %>
+            <% next if row[:total].to_f.zero? %>
+            <tr>
+              <td><%= idx + 1 %></td>
+              <td>
+                <% if row[:contact] %>
+                  <%= link_to row[:contact].display_name, admin_contact_path(row[:contact]) %>
+                <% elsif row[:from_number].present? %>
+                  <%= row[:from_number] %>
+                <% else %>
+                  <span style="color: var(--text-muted);">(anonymous)</span>
+                <% end %>
+              </td>
+              <td style="text-align: right;"><%= number_to_currency(row[:total], unit: "$", precision: 4) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% else %>
+      <p style="color: var(--text-muted); font-size: 0.875rem;">No spend in this period.</p>
+    <% end %>
+  </div>
+
+  <div class="card">
+    <h3>Time-of-day pattern</h3>
+    <% if @heatmap_max > 0 %>
+      <table class="heatmap">
+        <thead>
+          <tr>
+            <th class="row-label"></th>
+            <% (0..23).each do |h| %>
+              <th><%= h.even? ? h : "" %></th>
+            <% end %>
+          </tr>
+        </thead>
+        <tbody>
+          <% (0..6).each do |dow| %>
+            <tr>
+              <th class="row-label"><%= Date::DAYNAMES[dow][0..2] %></th>
+              <% (0..23).each do |hour| %>
+                <% v = (@heatmap[[dow, hour]] || 0).to_f %>
+                <% intensity = (v / @heatmap_max).clamp(0.0, 1.0) %>
+                <td class="cell"
+                    style="background: rgba(99, 102, 241, <%= (0.08 + intensity * 0.92).round(3) %>);"
+                    title="<%= Date::DAYNAMES[dow] %> <%= hour.to_s.rjust(2, "0") %>:00 — <%= number_to_currency(v, unit: "$", precision: 4) %>"></td>
+              <% end %>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+      <p style="color: var(--text-muted); font-size: 0.7rem; margin-top: 0.5rem;">
+        Hours in <%= current_tenant&.time_zone || "Europe/Rome" %>. Darker = higher spend.
+      </p>
+    <% else %>
+      <p style="color: var(--text-muted); font-size: 0.875rem;">No spend in this period.</p>
+    <% end %>
+  </div>
+</div>
+
+<% if super_admin? %>
+  <div class="card">
+    <h3>Per-tenant rollup</h3>
+    <% if @per_tenant.any? %>
+      <table>
+        <thead>
+          <tr>
+            <th>Tenant</th>
+            <th>Calls</th>
+            <th style="text-align: right;">Spend</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @per_tenant.each do |row| %>
+            <tr>
+              <td>
+                <% if row[:tenant] %>
+                  <%= link_to row[:tenant].display_name,
+                              admin_costs_path(period: @period_key, tenant_id: row[:tenant].id) %>
+                <% else %>
+                  <span style="color: var(--text-muted);">(deleted)</span>
+                <% end %>
+              </td>
+              <td><%= row[:count] %></td>
+              <td style="text-align: right;"><%= number_to_currency(row[:total], unit: "$", precision: 4) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% else %>
+      <p style="color: var(--text-muted); font-size: 0.875rem;">No spend in this period.</p>
+    <% end %>
+  </div>
+<% end %>
+
+<p class="footnote">
+  Pricing assumes
+  <%= number_to_currency(Pricing::TELNYX_VOICE_PER_MIN_USD, unit: "$", precision: 4) %>/min
+  for Telnyx voice and
+  <%= number_to_currency(Pricing::MOONSHOT_INPUT_PER_1M_USD, unit: "$", precision: 2) %>/M input +
+  <%= number_to_currency(Pricing::MOONSHOT_OUTPUT_PER_1M_USD, unit: "$", precision: 2) %>/M output
+  tokens for Moonshot. Override with <code>CALLSCREEN_TELNYX_USD_PER_MIN</code>,
+  <code>CALLSCREEN_MOONSHOT_INPUT_USD_PER_1M</code>,
+  <code>CALLSCREEN_MOONSHOT_OUTPUT_USD_PER_1M</code>.
+  Pre-rollout calls have estimated Telnyx costs (recording length, not billed lifetime);
+  new calls capture <code>answered_at</code>..<code>hung_up_at</code> directly.
+</p>

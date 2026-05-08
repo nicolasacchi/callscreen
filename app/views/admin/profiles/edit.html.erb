@@ -81,7 +81,7 @@
 
   <h3>Anti-abuse</h3>
   <div class="form-group">
-    <%= f.label :max_calls_per_caller_per_day %>
+    <%= f.label :max_calls_per_caller_per_day, "Max calls per caller (per 15 min)" %>
     <%= f.number_field :max_calls_per_caller_per_day, min: 1, max: 1000 %>
   </div>
   <div class="form-group">

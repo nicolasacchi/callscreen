@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Synthetic end-to-end call replay against the live callscreen webhook.
+# See scripts/synthetic_call.rb for the full option list and rationale.
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec ruby "${SCRIPT_DIR}/../scripts/synthetic_call.rb" "$@"

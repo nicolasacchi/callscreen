@@ -35,6 +35,41 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  test "synthetic token (?synthetic_token=) authenticates when SYNTHETIC_WEBHOOK_TOKEN is set" do
+    ENV["SYNTHETIC_WEBHOOK_TOKEN"] = "syn-test-token"
+    ENV["WEBHOOK_TOKEN_FALLBACK"]  = "0"  # ensure fallback is OFF
+    post telnyx_voice_url(synthetic_token: "syn-test-token"),
+         params: event_envelope("call.unknown.foo").to_json,
+         headers: { "Content-Type" => "application/json" }
+    assert_response :success
+  ensure
+    ENV.delete("SYNTHETIC_WEBHOOK_TOKEN")
+    ENV["WEBHOOK_TOKEN_FALLBACK"] = "1"
+  end
+
+  test "synthetic token rejected when env var is unset" do
+    ENV.delete("SYNTHETIC_WEBHOOK_TOKEN")
+    ENV["WEBHOOK_TOKEN_FALLBACK"] = "0"
+    post telnyx_voice_url(synthetic_token: "anything"),
+         params: event_envelope("call.unknown.foo").to_json,
+         headers: { "Content-Type" => "application/json" }
+    assert_response :unauthorized
+  ensure
+    ENV["WEBHOOK_TOKEN_FALLBACK"] = "1"
+  end
+
+  test "synthetic token mismatch is rejected" do
+    ENV["SYNTHETIC_WEBHOOK_TOKEN"] = "syn-test-token"
+    ENV["WEBHOOK_TOKEN_FALLBACK"]  = "0"
+    post telnyx_voice_url(synthetic_token: "wrong-token"),
+         params: event_envelope("call.unknown.foo").to_json,
+         headers: { "Content-Type" => "application/json" }
+    assert_response :unauthorized
+  ensure
+    ENV.delete("SYNTHETIC_WEBHOOK_TOKEN")
+    ENV["WEBHOOK_TOKEN_FALLBACK"] = "1"
+  end
+
   test "Ed25519 signature path authenticates the webhook" do
     private_key = OpenSSL::PKey.generate_key("ED25519")
     ENV["TELNYX_PUBLIC_KEY"] = Base64.strict_encode64(private_key.raw_public_key)
@@ -223,6 +258,13 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "call.answered without pre-rendered audio falls back to TTS via speak" do
+    # Clear greeting_voice so audio_url_for_voice short-circuits on
+    # `voice.blank?` regardless of what WAVs exist on the host volume
+    # under storage/greetings/. (Without this guard the test is order-
+    # dependent: a previous test's setup_pre_rendered_greeting +
+    # cleanup_greeting_files cycle nukes the real WAV, which we'd
+    # otherwise pick up.)
+    @tenant.update_columns(greeting_voice: nil)
     seed_call(flow_state: "answered")
     speak_stub = stub_action(CCID, :speak)
 
@@ -391,6 +433,37 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   # === Round-robin voice rotation ===
 
+  test "voice rotation cursor advances exactly once per call (greeting + goodbye both fire)" do
+    @tenant.update!(
+      voice_rotation_enabled: true,
+      voice_rotation_voices:  "if_sara,im_nicola",
+      voice_rotation_index:   0,
+      auto_blacklist_threshold: nil  # don't trip during the recording branch
+    )
+    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "if_sara")
+    setup_pre_rendered_greeting("goodbye_spam",            voice: "if_sara")
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start").to_return(status: 200, body: "{}")
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/record_start").to_return(status: 200, body: "{}")
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/hangup").to_return(status: 200, body: "{}")
+
+    # call.answered → play_greeting → cursor advances
+    seed_call(flow_state: "answered")
+    post_event answered_payload
+    assert_equal 1, @tenant.reload.voice_rotation_index, "greeting should advance cursor by 1"
+
+    # call.recording.saved → play_goodbye (in screening_recording flow_state)
+    Call.find_by!(call_control_id: CCID).update!(flow_state: "screening_recording", recording_url: nil)
+    post_event recording_saved_payload(url: "https://api.telnyx.com/v2/recordings/x.wav")
+
+    # Cursor should NOT advance again — same call, voice cached on Call#selected_voice.
+    assert_equal 1, @tenant.reload.voice_rotation_index, "goodbye should reuse picked voice; cursor stays at 1"
+
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal "if_sara", call.selected_voice
+  ensure
+    cleanup_greeting_files
+  end
+
   test "voice_rotation_enabled cycles through voices across consecutive calls" do
     @tenant.update!(
       voice_rotation_enabled: true,
@@ -483,13 +556,22 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "voice_rotation falls through to clone or default when rotated voice has no rendered file" do
+    # Use a unique test-only slug so we control which voice variants
+    # have real files on disk (the production storage volume contains
+    # WAVs for every catalog slug × voice, which would otherwise let
+    # if_sara succeed instead of falling through).
+    test_slug = "fallthrough_only_im_nicola"
+    Phrase.create!(tenant: @tenant, slug: test_slug, label: "X",
+                   kind: "user", text_it: "x", text_en: "x",
+                   render_status: "rendered", last_rendered_at: Time.current)
     @tenant.update!(
+      greeting_variant: test_slug,
       voice_rotation_enabled: true,
-      voice_rotation_voices: "if_sara,im_nicola",  # neither will be rendered
+      voice_rotation_voices: "if_sara,im_nicola",
       voice_rotation_index: 0
     )
-    # Only im_nicola exists; if_sara doesn't.
-    setup_pre_rendered_greeting(@tenant.greeting_variant, voice: "im_nicola")
+    # Only im_nicola exists for this slug; if_sara doesn't.
+    setup_pre_rendered_greeting(test_slug, voice: "im_nicola")
 
     captured = nil
     stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
@@ -500,7 +582,8 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     @tenant.calls.find_by!(call_control_id: CCID).update!(from_number: "+393339995555")
     post_event answered_payload
 
-    # First rotation pick was if_sara (no file) → fell through → tenant.greeting_voice = im_nicola
+    # First rotation pick was if_sara (no file for test_slug) → fell
+    # through → tenant.greeting_voice = im_nicola.
     assert_match %r{/im_nicola/}, captured["audio_url"]
   ensure
     cleanup_greeting_files
@@ -589,6 +672,42 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     post_event event_envelope("call.hangup")
     call = Call.find_by!(call_control_id: CCID)
     assert_equal "done", call.flow_state
+  end
+
+  test "call.hangup after call.answered captures billable_seconds and telnyx_cost_usd" do
+    seed_call(flow_state: "answered", contact: contacts(:regular))
+    # Pretend Telnyx answered the call 12 seconds ago.
+    Call.find_by!(call_control_id: CCID).update!(answered_at: 12.seconds.ago)
+
+    post_event event_envelope("call.hangup")
+
+    call = Call.find_by!(call_control_id: CCID)
+    assert call.hung_up_at.present?, "hung_up_at must be stamped on hangup"
+    assert call.billable_seconds && call.billable_seconds >= 11
+    expected = Pricing.telnyx_voice_usd(call.billable_seconds)
+    assert_in_delta expected, call.telnyx_cost_usd.to_f, 1e-9
+  end
+
+  test "call.hangup with no answered_at bills $0 (rejected before answer)" do
+    seed_call(flow_state: "done", contact: contacts(:regular))
+    post_event event_envelope("call.hangup")
+    call = Call.find_by!(call_control_id: CCID)
+    assert call.hung_up_at.present?
+    assert_nil call.billable_seconds
+    assert_equal 0.0, call.telnyx_cost_usd.to_f
+  end
+
+  test "call.answered stamps answered_at" do
+    seed_call(flow_state: "answered", contact: contacts(:regular))
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")
+      .to_return(status: 200, body: "{}")
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/speak")
+      .to_return(status: 200, body: "{}")
+
+    post_event answered_payload
+
+    call = Call.find_by!(call_control_id: CCID)
+    assert call.answered_at.present?, "answered_at must be stamped on call.answered"
   end
 
   # === unknown events ===

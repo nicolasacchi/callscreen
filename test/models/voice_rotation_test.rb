@@ -56,4 +56,36 @@ class VoiceRotationTest < ActiveSupport::TestCase
     # Model-level: index NOT reset (controller is responsible for that)
     assert_equal 5, @tenant.reload.voice_rotation_index
   end
+
+  test "phrase_rotation_variant_list parses CSV string" do
+    @tenant.update!(phrase_rotation_variants: "informal_tu,formal_lei,direct")
+    assert_equal %w[informal_tu formal_lei direct], @tenant.phrase_rotation_variant_list
+  end
+
+  test "phrase_rotation_ready? requires both flag and non-empty list" do
+    @tenant.update!(phrase_rotation_enabled: true, phrase_rotation_variants: "informal_tu,direct")
+    assert @tenant.phrase_rotation_ready?
+
+    @tenant.update_columns(phrase_rotation_enabled: false)
+    refute @tenant.phrase_rotation_ready?
+
+    @tenant.update_columns(phrase_rotation_enabled: true, phrase_rotation_variants: "")
+    refute @tenant.phrase_rotation_ready?
+  end
+
+  test "next_rotated_variant! cycles through the list and advances the index" do
+    @tenant.update!(
+      phrase_rotation_enabled: true,
+      phrase_rotation_variants: "informal_tu,direct,warm",
+      phrase_rotation_index: 0
+    )
+    slugs = 6.times.map { @tenant.next_rotated_variant! }
+    assert_equal %w[informal_tu direct warm informal_tu direct warm], slugs
+    assert_equal 6, @tenant.reload.phrase_rotation_index
+  end
+
+  test "next_rotated_variant! returns nil on empty list" do
+    @tenant.update!(phrase_rotation_variants: "")
+    assert_nil @tenant.next_rotated_variant!
+  end
 end

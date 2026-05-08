@@ -60,7 +60,9 @@
       [ "if_sara",    "Italian female (warm) — if_sara" ],
       [ "im_nicola",  "Italian male (calm) — im_nicola" ],
       [ "af_heart",   "English female (warm) — af_heart" ],
-      [ "am_michael", "English male (calm) — am_michael" ]
+      [ "am_michael", "English male (calm) — am_michael" ],
+      [ "cb_it",      "Italian (Chatterbox default) — cb_it" ],
+      [ "cb_en",      "English (Chatterbox default) — cb_en" ]
     ]
     if @tenant.voice_clone_rendered_at
       rotation_choices.unshift([ @tenant.cloned_voice_dir, "My cloned voice (#{@tenant.cloned_voice_dir})" ])
@@ -104,6 +106,42 @@
         For each English caller (auto-detected), Italian voices in the rotation are
         automatically swapped to their English counterpart (<code>if_sara→af_heart</code>,
         <code>im_nicola→am_michael</code>) so the language always matches.
+      </small>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid var(--border); margin: 1.25rem 0;">
+    <h4>Default phrase pool</h4>
+    <% default_pool_ids = @tenant.tenant_phrases.pluck(:phrase_id) %>
+    <div class="form-group form-check">
+      <%= f.check_box :phrase_rotation_enabled %>
+      <%= f.label :phrase_rotation_enabled, "Round-robin: rotate through these phrases for callers without a per-contact pool" %>
+      <small style="display: block; color: var(--text-muted);">
+        Each call picks the next eligible phrase. Caller never hears the
+        same one twice in a row. Per-contact assignments override this
+        list. Counter persists across deploys; current position:
+        <code><%= @tenant.phrase_rotation_index %></code>.
+      </small>
+    </div>
+
+    <div class="form-group" style="margin-left: 1.5rem;">
+      <label>Default-pool phrases (filtered by time-of-day at call time):</label>
+      <input type="hidden" name="tenant[default_pool_phrase_ids][]" value="">
+      <% Phrase.visible_to(@tenant).where(kind: "user").order(:time_of_day, :slug).each do |phrase| %>
+        <div class="form-check">
+          <input type="checkbox"
+                 name="tenant[default_pool_phrase_ids][]"
+                 id="default_phrase_<%= phrase.id %>"
+                 value="<%= phrase.id %>"
+                 <%= "checked" if default_pool_ids.include?(phrase.id) %>>
+          <label for="default_phrase_<%= phrase.id %>">
+            <%= phrase.label %> —
+            <code><%= phrase.slug %></code>
+            <small style="color: var(--text-muted);">(<%= phrase.time_of_day %>)</small>
+          </label>
+        </div>
+      <% end %>
+      <small style="display: block; color: var(--text-muted); margin-top: 0.5rem;">
+        Add more under <%= link_to "Phrases", admin_phrases_path %>.
       </small>
     </div>
 

@@ -19,13 +19,13 @@ class AbuseDefensesTest < ActionDispatch::IntegrationTest
   CALLER_FROM  = "+393335551234"
   TENANT_TO    = "+390123456789"
 
-  test "rate limit: 6th call from same caller in 24h is rejected without LLM" do
+  test "rate limit: 6th call from same caller in 15min is rejected without LLM" do
     contact = @tenant.contacts.create!(phone: CALLER_FROM)
     5.times do |i|
       @tenant.calls.create!(
         call_sid: "rl-prev-#{i}", call_control_id: "rl-prev-#{i}",
         from_number: CALLER_FROM, contact: contact, status: :spam,
-        created_at: i.hours.ago
+        created_at: (i * 2).minutes.ago
       )
     end
     reject_stub = stub_action(CCID, :reject)
@@ -44,7 +44,7 @@ class AbuseDefensesTest < ActionDispatch::IntegrationTest
     assert_match(/Rate limited/, new_call.ai_classification["reason"])
   end
 
-  test "rate limit: counts ignore old calls outside the 24h window" do
+  test "rate limit: counts ignore old calls outside the 15min window" do
     contact = @tenant.contacts.create!(phone: CALLER_FROM)
     6.times do |i|
       @tenant.calls.create!(

@@ -42,8 +42,9 @@
         <td>
           <% if call.contact %>
             <%= link_to call.contact_name, admin_contact_path(call.contact) %>
+            <br><small><%= phone_link(call.from_number) %></small>
           <% else %>
-            <%= call.from_number %>
+            <%= phone_link(call.from_number) %>
           <% end %>
         </td>
         <td>

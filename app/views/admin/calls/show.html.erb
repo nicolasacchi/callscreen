@@ -7,7 +7,7 @@
 
     <dt>From</dt>
     <dd>
-      <%= @call.from_number %>
+      <%= phone_link(@call.from_number) %>
       <% if @call.contact %>
         (<%= link_to @call.contact.display_name, admin_contact_path(@call.contact) %>)
       <% end %>
@@ -24,6 +24,16 @@
 
     <dt>Duration</dt>
     <dd><%= @call.duration_seconds ? "#{@call.duration_seconds}s" : "-" %></dd>
+
+    <% if @call.selected_phrase_slug.present? %>
+      <dt>Played phrase</dt>
+      <dd><code><%= @call.selected_phrase_slug %></code></dd>
+    <% end %>
+
+    <% if @call.selected_voice.present? %>
+      <dt>Voice</dt>
+      <dd><code><%= @call.selected_voice %></code></dd>
+    <% end %>
   </dl>
 </div>
 
@@ -48,6 +58,32 @@
   </div>
 <% end %>
 
+<div class="card">
+  <h3>Cost</h3>
+  <dl class="detail-grid">
+    <dt>Telnyx voice</dt>
+    <dd>
+      <%= number_to_currency(@call.telnyx_cost_usd || 0, unit: "$", precision: 4) %>
+      <% if @call.billable_seconds %>
+        <small style="color: var(--text-muted);">(<%= @call.billable_seconds %>s billed)</small>
+      <% end %>
+    </dd>
+    <dt>Moonshot LLM</dt>
+    <dd>
+      <%= number_to_currency(@call.moonshot_cost_usd || 0, unit: "$", precision: 4) %>
+      <% if @call.llm_classified? && @call.moonshot_tokens_in %>
+        <small style="color: var(--text-muted);">
+          (<%= @call.moonshot_tokens_in %> in / <%= @call.moonshot_tokens_out %> out)
+        </small>
+      <% elsif @call.ai_classification_source.present? && @call.ai_classification_source != "llm" %>
+        <small style="color: var(--text-muted);">(skipped — <%= @call.ai_classification_source %>)</small>
+      <% end %>
+    </dd>
+    <dt>Total</dt>
+    <dd><strong><%= number_to_currency(@call.total_cost_usd, unit: "$", precision: 4) %></strong></dd>
+  </dl>
+</div>
+
 <% if @call.voicemail_transcript.present? %>
   <div class="card">
     <h3>Voicemail Transcript</h3>
@@ -55,12 +91,15 @@
   </div>
 <% end %>
 
-<% if @call.recording_local_path.present? %>
+<% if @call.recording_local_path.present? || @call.recording_url.present? %>
   <div class="card">
     <h3>Recording</h3>
     <audio controls preload="metadata" style="width: 100%;">
       <source src="<%= recording_path(@call.id) %>" type="audio/wav">
     </audio>
+    <% if @call.recording_local_path.blank? %>
+      <small style="color: var(--text-muted);">Fetched from Telnyx and cached locally on first play.</small>
+    <% end %>
   </div>
 <% end %>
 

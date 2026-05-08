@@ -9,6 +9,20 @@ Rails.application.routes.draw do
   post "telnyx/recording", to: "telnyx#recording"
   post "telnyx/status",    to: "telnyx#status"
 
+  # ntfy notification action buttons (signed-token authed, no session)
+  post "ntfy/calls/:call_id/whitelist", to: "ntfy_actions#whitelist", as: :ntfy_whitelist_call
+  post "ntfy/calls/:call_id/spam",      to: "ntfy_actions#mark_spam", as: :ntfy_spam_call
+  post "ntfy/calls/:call_id/legit",     to: "ntfy_actions#mark_legit", as: :ntfy_legit_call
+
+  # E2E inspector — read-only JSON endpoints for the live e2e suite.
+  # Gated by SYNTHETIC_WEBHOOK_TOKEN; returns 401 when the env var is
+  # unset, so this surface is invisible in deployments without e2e.
+  # Uses query params (not path segments) because call_control_ids
+  # contain colons that break Rails path routing (`v3:synthetic-…`).
+  get "e2e/call",    to: "e2e_inspector#show_call",    defaults: { format: :json }
+  get "e2e/tenant",  to: "e2e_inspector#show_tenant",  defaults: { format: :json }
+  get "e2e/contact", to: "e2e_inspector#show_contact", defaults: { format: :json }
+
   # Authenticated recording playback
   get "recordings/:id", to: "recordings#show", as: :recording
 
@@ -40,11 +54,17 @@ Rails.application.routes.draw do
     end
     resources :contacts
     resources :rules
+    resources :recordings, only: [ :index ]
+    resources :phrases do
+      member { post :rerender }
+    end
+    resources :tags, only: [ :index, :destroy ]
     resource  :settings, only: [ :show, :update ]
     resource  :profile,  only: [ :show, :edit, :update ]
     resource  :voice_sample, only: [ :create, :destroy ]
     post "voice_sample/clone", to: "voice_samples#enqueue_render", as: :enqueue_voice_clone_render
     resources :tenants
+    get "costs", to: "costs#index", as: :costs
   end
 
   root to: redirect("/admin")

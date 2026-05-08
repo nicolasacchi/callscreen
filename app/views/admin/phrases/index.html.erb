@@ -1,0 +1,101 @@
+<h1>Phrases</h1>
+
+<div class="toolbar">
+  <%= form_tag admin_phrases_path, method: :get, style: "display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;" do %>
+    <select name="tod" onchange="this.form.submit()">
+      <option value="">All time-of-day</option>
+      <% Phrase::TIMES_OF_DAY.each do |t| %>
+        <option value="<%= t %>" <%= "selected" if params[:tod] == t %>><%= t.capitalize %></option>
+      <% end %>
+    </select>
+    <select name="dow" onchange="this.form.submit()">
+      <option value="">All days</option>
+      <% Phrase::DAYS_OF_WEEK.each do |d| %>
+        <option value="<%= d %>" <%= "selected" if params[:dow] == d %>><%= d.capitalize %></option>
+      <% end %>
+    </select>
+    <select name="status" onchange="this.form.submit()">
+      <option value="">All statuses</option>
+      <% Phrase::RENDER_STATUSES.each do |s| %>
+        <option value="<%= s %>" <%= "selected" if params[:status] == s %>><%= s.capitalize %></option>
+      <% end %>
+    </select>
+    <% if @tags.any? %>
+      <select name="tag_id" onchange="this.form.submit()">
+        <option value="">All tags</option>
+        <% @tags.each do |t| %>
+          <option value="<%= t.id %>" <%= "selected" if params[:tag_id].to_s == t.id.to_s %>><%= t.name %></option>
+        <% end %>
+      </select>
+    <% end %>
+    <button type="submit" class="btn btn-sm">Filter</button>
+  <% end %>
+  <%= link_to "+ New phrase", new_admin_phrase_path, class: "btn btn-primary btn-sm", style: "margin-left: auto;" %>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Slug</th>
+      <th>Label</th>
+      <th>Time of day</th>
+      <th>Day of week</th>
+      <th>Status</th>
+      <th>Languages</th>
+      <th>Owner</th>
+      <th>Preview</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @phrases.each do |phrase| %>
+      <tr>
+        <td><code><%= phrase.slug %></code></td>
+        <td><%= phrase.label %></td>
+        <td><%= phrase.time_of_day %></td>
+        <td><%= phrase.day_of_week %></td>
+        <td>
+          <span class="badge badge-<%= phrase.render_status == 'rendered' ? 'legit' : 'uncertain' %>">
+            <%= phrase.render_status %>
+          </span>
+          <% if phrase.last_render_error.present? %>
+            <small style="display: block; color: var(--danger);" title="<%= phrase.last_render_error %>">⚠ render failed</small>
+          <% end %>
+        </td>
+        <td>
+          <%= "IT" if phrase.text_it.present? %>
+          <%= "EN" if phrase.text_en.present? %>
+        </td>
+        <td><%= phrase.tenant_id ? "Yours" : "Shared" %></td>
+        <td>
+          <% if phrase.render_status == "rendered" && current_tenant.greeting_voice.present? %>
+            <audio controls preload="none" style="width: 100%; max-width: 14rem;">
+              <source src="<%= "/greetings/#{phrase.slug}/#{current_tenant.greeting_voice}/natural.wav" %>" type="audio/wav">
+            </audio>
+          <% end %>
+        </td>
+        <td>
+          <% if phrase.tenant_id == current_tenant.id %>
+            <%= link_to "Edit", edit_admin_phrase_path(phrase), class: "btn btn-sm" %>
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<% if @phrases.empty? %>
+  <p style="color: var(--text-muted);">No phrases match your filters.</p>
+<% end %>
+
+<% if @pagination && @pagination[:total_pages] > 1 %>
+  <div class="pagination">
+    <% if @pagination[:current_page] > 1 %>
+      <%= link_to "Prev", admin_phrases_path(page: @pagination[:current_page] - 1, tod: params[:tod], status: params[:status], tag_id: params[:tag_id]), class: "btn btn-sm" %>
+    <% end %>
+    <span>Page <%= @pagination[:current_page] %> of <%= @pagination[:total_pages] %></span>
+    <% if @pagination[:current_page] < @pagination[:total_pages] %>
+      <%= link_to "Next", admin_phrases_path(page: @pagination[:current_page] + 1, tod: params[:tod], status: params[:status], tag_id: params[:tag_id]), class: "btn btn-sm" %>
+    <% end %>
+  </div>
+<% end %>

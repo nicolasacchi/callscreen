@@ -23,7 +23,12 @@
   <tbody>
     <% @contacts.each do |contact| %>
       <tr>
-        <td><%= link_to contact.phone, admin_contact_path(contact) %></td>
+        <td>
+          <%= link_to contact.phone, admin_contact_path(contact) %>
+          <% if contact.phone.present? %>
+            <%= link_to "📞", "tel:#{contact.phone}", title: "Call #{contact.phone}", style: "text-decoration: none; margin-left: 0.25rem;" %>
+          <% end %>
+        </td>
         <td><%= contact.name %></td>
         <td><%= contact.whitelisted? ? "Yes" : "" %></td>
         <td><%= contact.blacklisted? ? "Yes" : "" %></td>

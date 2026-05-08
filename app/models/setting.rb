@@ -18,7 +18,7 @@ class Setting < ApplicationRecord
   }.freeze
 
   ALLOWED_TRANSCRIPTION_ENGINES = %w[Google Telnyx Azure Deepgram].freeze
-  ALLOWED_VOICES = %w[if_sara im_nicola af_heart am_michael alice man woman].freeze
+  ALLOWED_VOICES = %w[if_sara im_nicola af_heart am_michael cb_it cb_en alice man woman].freeze
 
   VALIDATORS = {
     "spam_sensitivity" => :validate_sensitivity,
@@ -82,7 +82,12 @@ class Setting < ApplicationRecord
   end
 
   def self.validate_greeting_variant(v)
-    GreetingCatalog::SLUGS.include?(v.to_s)
+    # Accept any shared phrase slug (Phrase rows with tenant_id: nil)
+    # plus the legacy catalog-only fallback. Uses .to_a + bool to keep
+    # behaviour identical when the table doesn't yet exist (early boot).
+    return GreetingCatalog::SLUGS.include?(v.to_s) unless Phrase.table_exists?
+    Phrase.where(slug: v.to_s, tenant_id: nil).exists? ||
+      GreetingCatalog::SLUGS.include?(v.to_s)
   end
 
   def self.validate_greeting_tone(v)

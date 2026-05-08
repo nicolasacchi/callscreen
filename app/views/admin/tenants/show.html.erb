@@ -4,8 +4,8 @@
   <dl class="detail-grid">
     <dt>Email</dt><dd><%= @tenant.email %></dd>
     <dt>Slug</dt><dd><%= @tenant.slug %></dd>
-    <dt>Mobile (carrier-forward source)</dt><dd><%= @tenant.mobile_number || "—" %></dd>
-    <dt>Forward-back</dt><dd><%= @tenant.forward_back_number || "—" %></dd>
+    <dt>Mobile (carrier-forward source)</dt><dd><%= phone_link(@tenant.mobile_number) %></dd>
+    <dt>Forward-back</dt><dd><%= phone_link(@tenant.forward_back_number) %></dd>
     <dt>Dedicated number (B1 path)</dt><dd><%= @tenant.dedicated_number || "(none — shared Telnyx number)" %></dd>
     <dt>railsdav username</dt><dd><%= @tenant.railsdav_username || "—" %></dd>
     <dt>Default tenant</dt><dd><%= @tenant.default? ? "Yes" : "No" %></dd>

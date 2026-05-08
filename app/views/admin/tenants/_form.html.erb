@@ -61,7 +61,7 @@
   <div class="form-group"><%= f.label :max_recording_seconds %>       <%= f.number_field :max_recording_seconds, min: 5, max: 600 %></div>
 
   <h3>Anti-abuse</h3>
-  <div class="form-group"><%= f.label :max_calls_per_caller_per_day %>  <%= f.number_field :max_calls_per_caller_per_day, min: 1, max: 1000 %></div>
+  <div class="form-group"><%= f.label :max_calls_per_caller_per_day, "Max calls per caller (per 15 min)" %>  <%= f.number_field :max_calls_per_caller_per_day, min: 1, max: 1000 %></div>
   <div class="form-group"><%= f.label :auto_blacklist_threshold %>      <%= f.number_field :auto_blacklist_threshold, min: 1, max: 100 %></div>
   <div class="form-group"><%= f.label :auto_blacklist_window_days %>    <%= f.number_field :auto_blacklist_window_days, min: 1, max: 365 %></div>
 

@@ -38,7 +38,7 @@ class ScreeningJob < ApplicationJob
         "confidence" => 1.0,
         "reason" => "Keyword rule: #{keyword_rule.value}"
       }
-      finalize(call, status: :spam, ai_classification: classification)
+      finalize(call, status: :spam, ai_classification: classification, source: "keyword")
       auto_blacklist_if_pattern_match(call)
       return
     end
@@ -50,15 +50,15 @@ class ScreeningJob < ApplicationJob
     case result["classification"]
     when "spam"
       if result["confidence"].to_f >= sensitivity
-        finalize(call, status: :spam, ai_classification: result)
+        finalize(call, status: :spam, ai_classification: result, source: "llm")
         auto_blacklist_if_pattern_match(call)
       else
-        finalize(call, status: :uncertain, ai_classification: result)
+        finalize(call, status: :uncertain, ai_classification: result, source: "llm")
       end
     when "legit"
-      finalize(call, status: :legit, ai_classification: result)
+      finalize(call, status: :legit, ai_classification: result, source: "llm")
     else
-      finalize(call, status: :uncertain, ai_classification: result)
+      finalize(call, status: :uncertain, ai_classification: result, source: "llm")
     end
   rescue => e
     Rails.logger.error("ScreeningJob failed for call #{call_id}: #{e.class}: #{e.message}")
@@ -74,20 +74,27 @@ class ScreeningJob < ApplicationJob
   # recording arrives, so by the time this job finishes the leg is
   # usually already closed). Touching flow_state here would race with
   # handle_playback_or_speak_ended.
-  def finalize(call, status:, ai_classification: nil)
+  def finalize(call, status:, ai_classification: nil, source: nil)
     attrs = { status: status }
-    attrs[:ai_classification] = ai_classification if ai_classification
+    if ai_classification
+      tokens_in  = ai_classification["tokens_in"]
+      tokens_out = ai_classification["tokens_out"]
+      attrs[:ai_classification] = ai_classification.except("tokens_in", "tokens_out")
+      attrs[:ai_classification_source] = source if source
+      if source == "llm"
+        attrs[:moonshot_tokens_in]  = tokens_in
+        attrs[:moonshot_tokens_out] = tokens_out
+        attrs[:moonshot_cost_usd]   = Pricing.moonshot_usd(tokens_in, tokens_out)
+      elsif source.present?
+        attrs[:moonshot_cost_usd] = 0.0
+      end
+    end
     call.update!(attrs)
     NotifyJob.perform_later(call.id)
   end
 
   def caller_language(call)
-    tenant = call.tenant
-    if tenant.auto_detect_language
-      GreetingCatalog.language_for_number(call.from_number)
-    else
-      tenant.greeting_language.to_s.start_with?("it") ? "it" : "en"
-    end
+    LanguageResolver.for(call)
   end
 
   def auto_blacklist_if_pattern_match(call)

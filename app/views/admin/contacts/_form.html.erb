@@ -32,6 +32,55 @@
     <%= f.text_area :notes %>
   </div>
 
+  <div class="form-group">
+    <%= f.label :language, "Caller language (overrides auto-detect)" %>
+    <%= f.select :language, [ [ "Auto (detect from number)", "" ], [ "Italian", "it" ], [ "English", "en" ] ] %>
+  </div>
+
+  <% if @contact.persisted? %>
+    <hr style="border: 0; border-top: 1px solid var(--border); margin: 1.25rem 0;">
+    <h4>Phrases for this caller</h4>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">
+      Tick phrases to assign directly. Tag-matched phrases also play
+      automatically. Empty pools fall back to your default rotation.
+    </p>
+
+    <% selected_phrase_ids = @contact.phrase_ids %>
+    <% available = Phrase.visible_to(current_tenant).order(:time_of_day, :slug) %>
+    <% available.group_by(&:time_of_day).each do |tod, group| %>
+      <details <%= "open" if group.any? { |p| selected_phrase_ids.include?(p.id) } %>
+               style="margin-bottom: 0.5rem;">
+        <summary style="cursor: pointer; padding: 0.25rem 0;"><strong><%= tod.capitalize %></strong> (<%= group.size %>)</summary>
+        <input type="hidden" name="contact[phrase_ids][]" value="">
+        <% group.each do |phrase| %>
+          <div class="form-check" style="margin-left: 1rem;">
+            <input type="checkbox"
+                   name="contact[phrase_ids][]"
+                   id="contact_phrase_<%= phrase.id %>"
+                   value="<%= phrase.id %>"
+                   <%= "checked" if selected_phrase_ids.include?(phrase.id) %>>
+            <label for="contact_phrase_<%= phrase.id %>">
+              <strong><%= phrase.label %></strong>
+              <small style="color: var(--text-muted);"><code><%= phrase.slug %></code></small>
+              <% if phrase.text_it.present? %>
+                <br><small><%= truncate(phrase.text_it, length: 80) %></small>
+              <% end %>
+            </label>
+          </div>
+        <% end %>
+      </details>
+    <% end %>
+
+    <div class="form-group" style="margin-top: 1rem;">
+      <% existing_tags = @contact.tags.pluck(:name).join(", ") %>
+      <%= label_tag "contact_tag_names", "Tags (comma-separated; auto-created)" %>
+      <%= text_field_tag "contact[tag_names]", existing_tags, placeholder: "family, work" %>
+      <small style="color: var(--text-muted);">
+        Phrases sharing any of these tags become eligible for this caller too.
+      </small>
+    </div>
+  <% end %>
+
   <div class="actions">
     <%= f.submit class: "btn btn-primary" %>
     <%= link_to "Cancel", admin_contacts_path, class: "btn" %>

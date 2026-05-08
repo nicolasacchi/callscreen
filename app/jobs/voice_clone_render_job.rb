@@ -53,7 +53,11 @@ class VoiceCloneRenderJob < ApplicationJob
 
   def run_in_container(tenant, sample_abs)
     script = Rails.root.join("scripts", "clone_render.py").to_s
-    cmd = [ tts_python, script, tenant.id.to_s, "--sample", sample_abs ]
+    # --from-db reads phrases from the SQLite phrases table (DB-backed
+    # since the per-contact phrase rewrite). Without this flag the
+    # script would regex-parse greeting_catalog.rb, missing every
+    # user-authored phrase the tenant has added.
+    cmd = [ tts_python, script, tenant.id.to_s, "--sample", sample_abs, "--from-db" ]
 
     Rails.logger.info("VoiceCloneRenderJob: running #{cmd.join(' ')}")
     output = nil

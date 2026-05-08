@@ -93,15 +93,19 @@ class SpamClassifier
     body = JSON.parse(response.body)
     content = body.dig("choices", 0, "message", "content")
     result = JSON.parse(content.to_s)
-    result.slice("classification", "confidence", "reason").transform_values do |v|
+    out = result.slice("classification", "confidence", "reason").transform_values do |v|
       v.is_a?(String) ? v.first(500) : v
     end
+    out["tokens_in"]  = body.dig("usage", "prompt_tokens")
+    out["tokens_out"] = body.dig("usage", "completion_tokens")
+    out
   rescue JSON::ParserError => e
     Rails.logger.error("SpamClassifier JSON parse error: #{e.class}")
     uncertain("Failed to parse LLM response")
   end
 
   def uncertain(reason)
-    { "classification" => "uncertain", "confidence" => 0.0, "reason" => reason }
+    { "classification" => "uncertain", "confidence" => 0.0, "reason" => reason,
+      "tokens_in" => nil, "tokens_out" => nil }
   end
 end

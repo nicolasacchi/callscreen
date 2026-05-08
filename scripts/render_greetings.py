@@ -123,8 +123,23 @@ def lang_code_for_voice(voice: str) -> str:
 
 
 def text_language_for_voice(voice: str) -> str:
-    """Pick the catalog text language: 'it' for Italian voices, 'en' for English."""
+    """Pick the catalog text language: 'it' for Italian voices, 'en' for English.
+
+    Voice id conventions:
+      i*       → Italian Kokoro (e.g. if_sara, im_nicola)
+      a*, b*   → English Kokoro (e.g. af_heart, am_michael)
+      cb_it_*  → Italian Chatterbox (default voice, no reference)
+      cb_en_*  → English Chatterbox (default voice, no reference)
+    """
+    if voice.startswith("cb_it"):
+        return "it"
+    if voice.startswith("cb_en"):
+        return "en"
     return "it" if lang_code_for_voice(voice) == "i" else "en"
+
+
+def is_chatterbox_voice(voice: str) -> bool:
+    return voice.startswith("cb_")
 
 
 def render(variant: Variant, voice: str, tone: str, speed: float, pipeline_cache: dict, force: bool) -> bool:
@@ -141,6 +156,12 @@ def render(variant: Variant, voice: str, tone: str, speed: float, pipeline_cache
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    if is_chatterbox_voice(voice):
+        return _render_chatterbox(out_path, voice, text, text_lang, tone, speed, pipeline_cache)
+    return _render_kokoro(out_path, voice, text, text_lang, tone, speed, pipeline_cache)
+
+
+def _render_kokoro(out_path, voice, text, text_lang, tone, speed, pipeline_cache) -> bool:
     try:
         import numpy as np
         import soundfile as sf
@@ -162,13 +183,90 @@ def render(variant: Variant, voice: str, tone: str, speed: float, pipeline_cache
     for _gs, _ps, audio in pipeline(text, voice=voice_tensor, speed=speed):
         pieces.append(audio)
     if not pieces:
-        raise RuntimeError(f"No audio generated for {variant.slug} / {voice} / {tone}")
+        raise RuntimeError(f"No audio generated for {voice} / {tone} / {out_path.name}")
 
     combined = np.concatenate(pieces)
     sf.write(str(out_path), combined, SAMPLE_RATE)
     print(
         f"  → {out_path.relative_to(CALLSCREEN_ROOT)} "
         f"(lang={text_lang}, speed {speed}, {len(combined) / SAMPLE_RATE:.1f}s)",
+        file=sys.stderr,
+    )
+    return True
+
+
+def _render_chatterbox(out_path, voice, text, text_lang, tone, speed, pipeline_cache) -> bool:
+    """Render with Chatterbox built-in default voice (no reference sample needed).
+
+    `cb_it_*` voices use ChatterboxMultilingualTTS with language_id="it".
+    `cb_en_*` voices use ChatterboxTTS (English Standard, best quality).
+    Tone modulates `cfg_weight`: lower = more deliberate/slower pacing.
+    """
+    try:
+        import torch
+        import torchaudio as ta
+    except ImportError as e:
+        raise SystemExit(
+            f"Missing dependency: {e}\n\n"
+            "Install Chatterbox first:\n"
+            "  pip install chatterbox-tts torch torchaudio"
+        )
+    try:
+        from chatterbox.tts import ChatterboxTTS
+        from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+    except ImportError:
+        raise SystemExit(
+            "Chatterbox not installed. Install with:\n"
+            "  pip install chatterbox-tts"
+        )
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    cache_key = ("cb", text_lang)
+    if cache_key not in pipeline_cache:
+        if text_lang == "en":
+            print(f"  loading Chatterbox Standard (English) on {device}…", file=sys.stderr)
+            pipeline_cache[cache_key] = ChatterboxTTS.from_pretrained(device=device)
+        else:
+            print(f"  loading Chatterbox Multilingual ({text_lang}) on {device}…", file=sys.stderr)
+            pipeline_cache[cache_key] = ChatterboxMultilingualTTS.from_pretrained(device=device)
+    model = pipeline_cache[cache_key]
+
+    # cfg_weight modulates pacing: 0.5 ≈ natural, 0.3 ≈ slower / more deliberate.
+    cfg_weight = 0.5 if tone == "natural" else 0.3
+    gen_kwargs = {"exaggeration": 0.3, "cfg_weight": cfg_weight}
+    if text_lang != "en":
+        gen_kwargs["language_id"] = text_lang
+
+    wav = model.generate(text, **gen_kwargs)
+    # Italian-only post-process slowdown — Italian Chatterbox naturally
+    # speaks faster than the English Standard model, so we slow it down
+    # via ffmpeg's atempo filter to match the perceived pace of cb_en.
+    # Mild slowdown for natural; deeper for slow.
+    atempo = None
+    if voice == "cb_it":
+        atempo = 0.85 if tone == "natural" else 0.75
+    if atempo is not None:
+        import subprocess
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            ta.save(tmp_path, wav, model.sr)
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error",
+                 "-i", tmp_path, "-filter:a", f"atempo={atempo}", str(out_path)],
+                check=True,
+            )
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+    else:
+        ta.save(str(out_path), wav, model.sr)
+    duration = wav.shape[-1] / model.sr if hasattr(wav, "shape") else 0.0
+    extra = f", atempo={atempo}" if atempo is not None else ""
+    print(
+        f"  → {out_path.relative_to(CALLSCREEN_ROOT)} "
+        f"(chatterbox lang={text_lang}, cfg_weight={cfg_weight}{extra}, {duration:.1f}s pre-slow)",
         file=sys.stderr,
     )
     return True

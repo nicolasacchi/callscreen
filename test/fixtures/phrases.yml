@@ -1,0 +1,169 @@
+# Seed phrases mirror the data migration in
+# db/migrate/20260505000003_populate_system_phrases.rb so the test DB has
+# the same shared phrase rows as production. tenant_id NULL = shared.
+# render_status: rendered because the WAVs exist on disk.
+
+formal_lei:
+  tenant_id:
+  slug: formal_lei
+  label: Formal address (Lei)
+  kind: user
+  text_it: "Buongiorno. In questo momento sono impegnato. La prego di lasciare un messaggio dicendo di cosa ha bisogno: se necessario la richiamerò."
+  text_en: "Good day. I'm currently busy. Please leave a message stating what you need; I will call you back if necessary."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+informal_tu:
+  tenant_id:
+  slug: informal_tu
+  label: Informal address (tu)
+  kind: user
+  text_it: "Ciao, sono impegnato. Dimmi di cosa hai bisogno e ti richiamerò se serve."
+  text_en: "Hi, I'm busy right now. Tell me what you need and I'll call you back if it matters."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+business_meeting:
+  tenant_id:
+  slug: business_meeting
+  label: In a meeting
+  kind: user
+  text_it: "Buongiorno, al momento sono in riunione. La prego di lasciare un messaggio con il motivo della chiamata: la richiamerò appena libero."
+  text_en: "Hello, I'm in a meeting right now. Please leave a message with the reason for your call; I'll call you back as soon as I'm free."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+brief_lei:
+  tenant_id:
+  slug: brief_lei
+  label: Short, formal
+  kind: user
+  text_it: "Salve, sono impegnato. Mi dica di cosa ha bisogno e la richiamo."
+  text_en: "Hello, I'm busy. Tell me what you need and I'll call you back."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+brief_tu:
+  tenant_id:
+  slug: brief_tu
+  label: Short, informal
+  kind: user
+  text_it: "Ciao, sono impegnato. Dimmi di cosa hai bisogno e ti richiamo."
+  text_en: "Hi, I'm busy. Tell me what you need and I'll call you back."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+apologetic:
+  tenant_id:
+  slug: apologetic
+  label: Apologetic
+  kind: user
+  text_it: "Mi scusi, in questo momento non posso rispondere. Mi spieghi brevemente cosa le serve e la richiamerò io."
+  text_en: "Sorry, I can't pick up right now. Briefly tell me what you need and I'll call you back."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+direct:
+  tenant_id:
+  slug: direct
+  label: Direct, no apology
+  kind: user
+  text_it: "Pronto, sono impegnato. Dica chi è e di cosa ha bisogno. Se è urgente la richiamo io."
+  text_en: "Hello, I'm busy. State your name and what you need. If it's urgent I'll call you back."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+warm:
+  tenant_id:
+  slug: warm
+  label: Warm, friendly
+  kind: user
+  text_it: "Ciao! Grazie per aver chiamato. Adesso non posso rispondere, ma se mi dici di cosa hai bisogno ti richiamo volentieri."
+  text_en: "Hi there! Thanks for calling. I can't answer right now, but if you tell me what you need I'll be glad to call you back."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+delegate_voicemail:
+  tenant_id:
+  slug: delegate_voicemail
+  label: Delegate to voicemail
+  kind: user
+  text_it: "Salve, sono impegnato. La invito a lasciare un breve messaggio specificando di cosa ha bisogno: la richiamerò quanto prima."
+  text_en: "Hello, I'm busy. Please leave a brief message stating what you need; I'll call you back as soon as possible."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+bilingual_short:
+  tenant_id:
+  slug: bilingual_short
+  label: Italian + English
+  kind: user
+  text_it: "Sono impegnato, lasciate un messaggio. Hi, I'm busy, please leave a message."
+  text_en: "I'm busy, please leave a message. Sono impegnato, lasciate un messaggio."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+clarify:
+  tenant_id:
+  slug: clarify
+  label: Clarify
+  kind: system_clarify
+  text_it: "Scusa, non ho capito bene. Per favore, dimmi più precisamente di cosa hai bisogno e perché stai chiamando."
+  text_en: "Sorry, I didn't catch that. Please tell me more clearly what you need and why you're calling."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+voicemail_prompt:
+  tenant_id:
+  slug: voicemail_prompt
+  label: Voicemail prompt
+  kind: system_voicemail_prompt
+  text_it: "Va bene, dimmi pure quello che ti serve. Ti richiamo io."
+  text_en: "OK, tell me what you need. I'll call you back."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+goodbye_spam:
+  tenant_id:
+  slug: goodbye_spam
+  label: Goodbye spam
+  kind: system_goodbye_spam
+  text_it: "Grazie per aver chiamato. Arrivederci."
+  text_en: "Thanks for calling. Goodbye."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+goodbye_short:
+  tenant_id:
+  slug: goodbye_short
+  label: Goodbye short
+  kind: system_goodbye_short
+  text_it: "Arrivederci."
+  text_en: "Goodbye."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>
+
+no_answer:
+  tenant_id:
+  slug: no_answer
+  label: No answer
+  kind: system_no_answer
+  text_it: "Non ho ricevuto risposta. Arrivederci."
+  text_en: "I didn't get a response. Goodbye."
+  time_of_day: any
+  render_status: rendered
+  last_rendered_at: <%= Time.current %>

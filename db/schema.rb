@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_03_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_08_120000) do
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "actor_id"
@@ -27,6 +27,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_160000) do
 
   create_table "calls", force: :cascade do |t|
     t.text "ai_classification"
+    t.string "ai_classification_source"
+    t.datetime "answered_at"
+    t.integer "billable_seconds"
     t.string "call_control_id"
     t.string "call_sid"
     t.integer "contact_id"
@@ -34,11 +37,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_160000) do
     t.integer "duration_seconds"
     t.string "flow_state", default: "initiated", null: false
     t.string "from_number"
+    t.datetime "hung_up_at"
+    t.decimal "moonshot_cost_usd", precision: 12, scale: 8
+    t.integer "moonshot_tokens_in"
+    t.integer "moonshot_tokens_out"
     t.datetime "notified_at"
     t.string "recording_local_path"
     t.string "recording_url"
     t.text "screening_transcript"
+    t.string "selected_phrase_slug"
+    t.string "selected_voice"
     t.integer "status", default: 0, null: false
+    t.decimal "telnyx_cost_usd", precision: 12, scale: 8
     t.integer "tenant_id", null: false
     t.string "to_number"
     t.boolean "unattributed", default: false, null: false
@@ -55,19 +65,72 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_160000) do
     t.index ["tenant_id"], name: "index_calls_on_tenant_id"
   end
 
+  create_table "contact_phrases", force: :cascade do |t|
+    t.integer "contact_id", null: false
+    t.datetime "created_at", null: false
+    t.integer "phrase_id", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "updated_at", null: false
+    t.index ["contact_id", "phrase_id"], name: "index_contact_phrases_on_contact_id_and_phrase_id", unique: true
+    t.index ["contact_id"], name: "index_contact_phrases_on_contact_id"
+    t.index ["phrase_id"], name: "index_contact_phrases_on_phrase_id"
+  end
+
+  create_table "contact_tags", force: :cascade do |t|
+    t.integer "contact_id", null: false
+    t.datetime "created_at", null: false
+    t.integer "tag_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["contact_id", "tag_id"], name: "index_contact_tags_on_contact_id_and_tag_id", unique: true
+    t.index ["contact_id"], name: "index_contact_tags_on_contact_id"
+    t.index ["tag_id"], name: "index_contact_tags_on_tag_id"
+  end
+
   create_table "contacts", force: :cascade do |t|
     t.boolean "blacklisted", default: false, null: false
     t.integer "calls_count", default: 0, null: false
     t.datetime "created_at", null: false
+    t.string "language"
     t.datetime "last_called_at"
     t.string "name"
     t.text "notes"
     t.string "phone", null: false
+    t.integer "phrase_rotation_index", default: 0, null: false
     t.integer "tenant_id", null: false
     t.datetime "updated_at", null: false
     t.boolean "whitelisted", default: false, null: false
     t.index ["tenant_id", "phone"], name: "index_contacts_on_tenant_id_and_phone", unique: true
     t.index ["tenant_id"], name: "index_contacts_on_tenant_id"
+  end
+
+  create_table "phrase_tags", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "phrase_id", null: false
+    t.integer "tag_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["phrase_id", "tag_id"], name: "index_phrase_tags_on_phrase_id_and_tag_id", unique: true
+    t.index ["phrase_id"], name: "index_phrase_tags_on_phrase_id"
+    t.index ["tag_id"], name: "index_phrase_tags_on_tag_id"
+  end
+
+  create_table "phrases", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "day_of_week", default: "any", null: false
+    t.string "kind", default: "user", null: false
+    t.string "label", null: false
+    t.string "last_render_error"
+    t.datetime "last_rendered_at"
+    t.string "render_status", default: "pending", null: false
+    t.string "slug", limit: 40, null: false
+    t.integer "tenant_id"
+    t.text "text_en"
+    t.text "text_it"
+    t.string "time_of_day", default: "any", null: false
+    t.datetime "updated_at", null: false
+    t.index ["tenant_id", "render_status", "time_of_day", "day_of_week"], name: "index_phrases_on_resolver_predicate"
+    t.index ["tenant_id", "render_status", "time_of_day"], name: "index_phrases_on_tenant_id_and_render_status_and_time_of_day"
+    t.index ["tenant_id", "slug"], name: "index_phrases_on_tenant_id_and_slug", unique: true
+    t.index ["tenant_id"], name: "index_phrases_on_tenant_id"
   end
 
   create_table "rules", force: :cascade do |t|
@@ -91,6 +154,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_160000) do
     t.datetime "updated_at", null: false
     t.text "value"
     t.index ["key"], name: "index_settings_on_key", unique: true
+  end
+
+  create_table "tags", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.integer "tenant_id"
+    t.datetime "updated_at", null: false
+    t.index ["tenant_id", "name"], name: "index_tags_on_tenant_id_and_name", unique: true
+    t.index ["tenant_id"], name: "index_tags_on_tenant_id"
+  end
+
+  create_table "tenant_phrases", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "phrase_id", null: false
+    t.integer "position", default: 0, null: false
+    t.integer "tenant_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["phrase_id"], name: "index_tenant_phrases_on_phrase_id"
+    t.index ["tenant_id", "phrase_id"], name: "index_tenant_phrases_on_tenant_id_and_phrase_id", unique: true
+    t.index ["tenant_id"], name: "index_tenant_phrases_on_tenant_id"
   end
 
   create_table "tenants", force: :cascade do |t|
@@ -122,6 +205,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_160000) do
     t.string "name"
     t.string "ntfy_priority", default: "default"
     t.string "ntfy_url"
+    t.boolean "phrase_rotation_enabled", default: false, null: false
+    t.integer "phrase_rotation_index", default: 0, null: false
+    t.string "phrase_rotation_variants"
     t.string "railsdav_username"
     t.datetime "remember_created_at"
     t.datetime "reset_password_sent_at"
@@ -130,6 +216,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_160000) do
     t.integer "sign_in_count", default: 0, null: false
     t.string "slug"
     t.float "spam_sensitivity", default: 0.5
+    t.string "time_zone", default: "Europe/Rome", null: false
+    t.integer "tod_afternoon_hour", default: 12, null: false
+    t.integer "tod_evening_hour", default: 18, null: false
+    t.integer "tod_morning_hour", default: 6, null: false
+    t.integer "tod_night_hour", default: 22, null: false
     t.string "unlock_token"
     t.datetime "updated_at", null: false
     t.boolean "voice_clone_active", default: false, null: false
@@ -153,6 +244,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_160000) do
   add_foreign_key "audit_logs", "tenants", column: "actor_id"
   add_foreign_key "calls", "contacts"
   add_foreign_key "calls", "tenants"
+  add_foreign_key "contact_phrases", "contacts"
+  add_foreign_key "contact_phrases", "phrases"
+  add_foreign_key "contact_tags", "contacts"
+  add_foreign_key "contact_tags", "tags"
   add_foreign_key "contacts", "tenants"
+  add_foreign_key "phrase_tags", "phrases"
+  add_foreign_key "phrase_tags", "tags"
+  add_foreign_key "phrases", "tenants"
   add_foreign_key "rules", "tenants"
+  add_foreign_key "tags", "tenants"
+  add_foreign_key "tenant_phrases", "phrases"
+  add_foreign_key "tenant_phrases", "tenants"
 end

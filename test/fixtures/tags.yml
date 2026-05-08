@@ -1,0 +1,3 @@
+# Empty for now — tags get authored by the user. Tests that need tags
+# create them in setup blocks. Fixture file present so `fixtures :all`
+# doesn't trip on missing model class loading.

@@ -1,0 +1,29 @@
+<h1>Tags</h1>
+<p style="color: var(--text-muted);">
+  Tags group phrases and contacts so you can route a "family" tag to a "family" pool of phrases.
+  Authored automatically when you type a new tag in a Phrase or Contact form.
+</p>
+
+<% if @tags.any? %>
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Phrases</th><th>Contacts</th><th></th></tr>
+    </thead>
+    <tbody>
+      <% @tags.each do |tag| %>
+        <tr>
+          <td><strong><%= tag.name %></strong></td>
+          <td><%= tag.phrases.count %></td>
+          <td><%= tag.contacts.count %></td>
+          <td>
+            <%= button_to "Delete", admin_tag_path(tag), method: :delete,
+                          class: "btn btn-danger btn-sm",
+                          data: { turbo_confirm: "Remove tag '#{tag.name}'? Phrases and contacts won't be deleted, just untagged." } %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% else %>
+  <p style="color: var(--text-muted);">No tags yet. Add some via the phrase or contact forms.</p>
+<% end %>

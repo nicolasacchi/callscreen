@@ -1,5 +1,10 @@
 class NotifyJob < ApplicationJob
   queue_as :default
+  # Absorbs the race where a Call is destroyed (e.g. by e2e teardown,
+  # or operator manual delete) between ScreeningJob's enqueue and our
+  # perform. Without this the job retries until the dead set, polluting
+  # SolidQueue with no value.
+  discard_on ActiveRecord::RecordNotFound
 
   def perform(call_id)
     call = Call.find(call_id)
@@ -21,7 +26,8 @@ class NotifyJob < ApplicationJob
         priority: "low",
         tags: [ "no_entry", "spam" ],
         url: ntfy_url,
-        default_priority: ntfy_priority
+        default_priority: ntfy_priority,
+        call: call
       )
     elsif call.status == "unknown"
       NtfyNotifier.notify(
@@ -30,7 +36,8 @@ class NotifyJob < ApplicationJob
         priority: "default",
         tags: [ "phone", "question" ],
         url: ntfy_url,
-        default_priority: ntfy_priority
+        default_priority: ntfy_priority,
+        call: call
       )
     else
       NtfyNotifier.notify(
@@ -39,7 +46,8 @@ class NotifyJob < ApplicationJob
         priority: "high",
         tags: [ "phone", call.status ],
         url: ntfy_url,
-        default_priority: ntfy_priority
+        default_priority: ntfy_priority,
+        call: call
       )
     end
 

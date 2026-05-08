@@ -1,0 +1,67 @@
+<%= form_with model: @phrase, url: (@phrase.persisted? ? admin_phrase_path(@phrase) : admin_phrases_path), class: "card" do |f| %>
+  <% if @phrase.errors.any? %>
+    <div class="flash alert">
+      <ul>
+        <% @phrase.errors.full_messages.each do |m| %><li><%= m %></li><% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="form-group">
+    <%= f.label :label %>
+    <%= f.text_field :label, required: true %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :slug, "Slug (lowercase letters, digits, underscores; 1–40 chars)" %>
+    <%= f.text_field :slug, required: true, pattern: "[a-z0-9_]{1,40}",
+                     placeholder: "e.g. ti_chiamo_dopo_pranzo" %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :time_of_day %>
+    <%= f.select :time_of_day, Phrase::TIMES_OF_DAY.map { |t| [ t.capitalize, t ] } %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :day_of_week, "Day of week" %>
+    <%= f.select :day_of_week, [
+      [ "Any day", "any" ],
+      [ "Weekdays (Mon–Fri)", "weekday" ],
+      [ "Weekend (Sat–Sun)", "weekend" ],
+      [ "Monday",    "monday" ],
+      [ "Tuesday",   "tuesday" ],
+      [ "Wednesday", "wednesday" ],
+      [ "Thursday",  "thursday" ],
+      [ "Friday",    "friday" ],
+      [ "Saturday",  "saturday" ],
+      [ "Sunday",    "sunday" ]
+    ] %>
+    <small style="display: block; color: var(--text-muted);">
+      Plays only on matching days. Combine with time-of-day for narrow targeting
+      (e.g. "Saturday + morning" for a relaxed weekend brunch greeting).
+    </small>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :text_it, "Italian text" %>
+    <%= f.text_area :text_it, rows: 3, placeholder: "Ciao, ti chiamo dopo pranzo." %>
+  </div>
+
+  <div class="form-group">
+    <%= f.label :text_en, "English text" %>
+    <%= f.text_area :text_en, rows: 3, placeholder: "Hi, I'll call you back after lunch." %>
+  </div>
+  <small style="display: block; margin-top: -0.5rem; color: var(--text-muted);">
+    Provide at least one language. The screener picks the matching one based on the caller's resolved language.
+  </small>
+
+  <div class="form-group">
+    <% existing_tags = @phrase.persisted? ? @phrase.tags.pluck(:name).join(", ") : "" %>
+    <%= label_tag "phrase_tag_names", "Tags (comma-separated; auto-created)" %>
+    <%= text_field_tag "phrase[tag_names]", existing_tags, placeholder: "family, work" %>
+  </div>
+
+  <%= f.submit (@phrase.persisted? ? "Save" : "Create"), class: "btn btn-primary" %>
+  <%= link_to "Cancel", admin_phrases_path, class: "btn btn-sm", style: "margin-left: 0.5rem;" %>
+<% end %>

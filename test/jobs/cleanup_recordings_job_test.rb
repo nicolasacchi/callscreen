@@ -73,4 +73,34 @@ class CleanupRecordingsJobTest < ActiveJob::TestCase
     assert_equal "recent voicemail", fresh_call.voicemail_transcript
     assert_equal "legit", fresh_call.ai_classification["classification"]
   end
+
+  test "cost columns survive transcript nullification" do
+    Setting.set("auto_delete_transcripts_days", "30")
+
+    old_call = @tenant.calls.create!(
+      call_sid: "old-cost-survives",
+      from_number: "+393337777777",
+      status: :completed,
+      voicemail_transcript: "old",
+      screening_transcript: "old",
+      ai_classification: { "classification" => "spam", "confidence" => 0.9 },
+      ai_classification_source: "llm",
+      moonshot_tokens_in: 412, moonshot_tokens_out: 64,
+      moonshot_cost_usd: 0.000208,
+      telnyx_cost_usd: 0.0014,
+      billable_seconds: 12,
+      created_at: 60.days.ago
+    )
+
+    CleanupRecordingsJob.new.perform
+
+    old_call.reload
+    assert_nil old_call.ai_classification
+    # Persisted cost numbers must not be touched — that's the whole point.
+    assert_equal "llm", old_call.ai_classification_source
+    assert_equal 412, old_call.moonshot_tokens_in
+    assert_in_delta 0.000208, old_call.moonshot_cost_usd.to_f, 1e-9
+    assert_in_delta 0.0014, old_call.telnyx_cost_usd.to_f, 1e-9
+    assert_equal 12, old_call.billable_seconds
+  end
 end

@@ -10,7 +10,12 @@ class Tenant < ApplicationRecord
   has_many :audit_logs, dependent: :nullify
   has_many :acted_audit_logs, class_name: "AuditLog", foreign_key: :actor_id, dependent: :nullify
 
-  ALLOWED_VOICES    = %w[if_sara im_nicola af_heart am_michael alice man woman].freeze
+  has_many :phrases, dependent: :destroy   # tenant-owned phrases
+  has_many :tags,    dependent: :destroy
+  has_many :tenant_phrases, dependent: :destroy
+  has_many :default_pool_phrases, through: :tenant_phrases, source: :phrase
+
+  ALLOWED_VOICES    = %w[if_sara im_nicola af_heart am_michael cb_it cb_en alice man woman].freeze
   USERNAME_FORMAT   = /\A[a-z0-9._-]+\z/i
   E164_FORMAT       = /\A\+?[0-9]{6,15}\z/
   SLUG_FORMAT       = /\A[a-z0-9._-]+\z/
@@ -53,6 +58,8 @@ class Tenant < ApplicationRecord
   validate :screening_speech_timeout_valid
   validate :only_one_default_tenant
   validate :voice_clone_active_requires_consent_and_sample
+  validate :tod_hours_in_range_and_monotonic
+  validate :time_zone_is_resolvable
 
   before_validation :default_forward_back_to_mobile, on: :create
 
@@ -111,6 +118,28 @@ class Tenant < ApplicationRecord
     voice
   end
 
+  def phrase_rotation_variant_list
+    phrase_rotation_variants.to_s.split(",").map(&:strip).reject(&:empty?)
+  end
+
+  def phrase_rotation_ready?
+    phrase_rotation_enabled? && phrase_rotation_variant_list.any?
+  end
+
+  def next_rotated_variant!
+    list = phrase_rotation_variant_list
+    return nil if list.empty?
+
+    slug = nil
+    with_lock do
+      idx  = phrase_rotation_index || 0
+      slug = list[idx % list.size]
+      next_idx = (idx + 1) % (list.size * 1_000)
+      update_column(:phrase_rotation_index, next_idx)
+    end
+    slug
+  end
+
   private
 
   def voice_clone_active_requires_consent_and_sample
@@ -131,8 +160,11 @@ class Tenant < ApplicationRecord
 
   def greeting_variant_in_catalog
     return if greeting_variant.blank?
-    return if GreetingCatalog::SLUGS.include?(greeting_variant.to_s)
-    errors.add(:greeting_variant, "must be one of #{GreetingCatalog::SLUGS.join(', ')}")
+    # Accept any phrase visible to this tenant (shared system rows + own).
+    visible = Phrase.where(slug: greeting_variant.to_s)
+                    .where("tenant_id IS NULL OR tenant_id = ?", id)
+    return if visible.exists?
+    errors.add(:greeting_variant, "must reference an existing phrase")
   end
 
   def greeting_tone_in_catalog
@@ -153,5 +185,27 @@ class Tenant < ApplicationRecord
     return unless default_tenant?
     other = self.class.where(default_tenant: true).where.not(id: id)
     errors.add(:default_tenant, "another tenant is already the default") if other.exists?
+  end
+
+  def time_zone_is_resolvable
+    return if time_zone.blank?
+    return if Time.find_zone(time_zone)
+    errors.add(:time_zone, "is not a recognized time zone")
+  end
+
+  def tod_hours_in_range_and_monotonic
+    hours = [ tod_morning_hour, tod_afternoon_hour, tod_evening_hour, tod_night_hour ]
+    return if hours.all?(&:nil?)
+    unless hours.all? { |h| h.is_a?(Integer) && (0..23).cover?(h) }
+      errors.add(:base, "time-of-day hours must be integers in 0..23")
+      return
+    end
+    sorted = hours.sort
+    if sorted != hours
+      errors.add(:base, "time-of-day hours must be in order: morning < afternoon < evening < night")
+    end
+    if sorted.uniq.size != sorted.size
+      errors.add(:base, "time-of-day hours must be distinct")
+    end
   end
 end

@@ -3,7 +3,7 @@
 <div class="card">
   <dl class="detail-grid">
     <dt>Phone</dt>
-    <dd><%= @contact.phone %></dd>
+    <dd><%= phone_link(@contact.phone) %></dd>
     <dt>Name</dt>
     <dd><%= @contact.name || "-" %></dd>
     <dt>Whitelisted</dt>

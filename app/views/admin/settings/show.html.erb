@@ -98,7 +98,7 @@
         <% current = GreetingCatalog.find(setting.value) %>
         <% if current %>
           <small style="display: block; margin-top: 0.25rem; color: var(--text-muted);">
-            <%= current.text %>
+            <%= current.text("it") %>
           </small>
         <% end %>
       <% elsif setting.key == "greeting_tone" %>

@@ -23,7 +23,7 @@
       <tr>
         <td><%= t.display_name %></td>
         <td><%= t.email %></td>
-        <td><%= t.mobile_number || "—" %></td>
+        <td><%= phone_link(t.mobile_number) %></td>
         <td><%= t.dedicated_number || "—" %></td>
         <td><%= t.railsdav_username || "—" %></td>
         <td><%= "✓" if t.default? %></td>

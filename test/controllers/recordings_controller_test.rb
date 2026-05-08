@@ -49,6 +49,46 @@ class RecordingsControllerTest < ActionDispatch::IntegrationTest
     FileUtils.rm_f(path) if path
   end
 
+  test "fetches from Telnyx when local file is missing but recording_url is set" do
+    call = calls(:legit_completed)
+    path = Rails.root.join("storage/recordings/#{call.call_sid}.wav")
+    FileUtils.rm_f(path)
+    call.update!(
+      recording_local_path: nil,
+      recording_url: "https://s3.amazonaws.com/telephony-recorder/abc.wav"
+    )
+    stub_request(:get, call.recording_url).to_return(
+      status: 200, body: "RIFF stub wav data", headers: { "Content-Type" => "audio/wav" }
+    )
+
+    get recording_url(call)
+
+    assert_response :success
+    assert_equal "audio/wav", @response.media_type
+    assert_path_exists path.to_s
+    assert_equal path.to_s, call.reload.recording_local_path
+  ensure
+    FileUtils.rm_f(path) if path
+  end
+
+  test "returns 404 when Telnyx fallback fetch fails" do
+    call = calls(:legit_completed)
+    path = Rails.root.join("storage/recordings/#{call.call_sid}.wav")
+    FileUtils.rm_f(path)
+    call.update!(
+      recording_local_path: nil,
+      recording_url: "https://s3.amazonaws.com/telephony-recorder/missing.wav"
+    )
+    stub_request(:get, call.recording_url).to_return(status: 403)
+
+    get recording_url(call)
+
+    assert_response :not_found
+    refute path.exist?
+  ensure
+    FileUtils.rm_f(path) if path
+  end
+
   test "non-super-admin tenant cannot serve another tenant's recording" do
     sign_out_tenant
     other = tenants(:other)

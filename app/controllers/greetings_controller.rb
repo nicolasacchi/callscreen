@@ -14,7 +14,10 @@ class GreetingsController < ApplicationController
     return head :not_found unless slug.match?(SLUG_FORMAT)
     return head :not_found unless voice.match?(VOICE_FORMAT)
     return head :not_found unless tone.match?(TONE_FORMAT)
-    return head :not_found unless GreetingCatalog::ALL_SLUGS.include?(slug)
+    # Slug allowlist is now DB-backed: any seeded shared phrase or any
+    # tenant-authored phrase is valid. The format regex above still
+    # blocks path traversal — this exists?-call only checks identity.
+    return head :not_found unless Phrase.exists?(slug: slug)
     return head :not_found unless Setting::ALLOWED_VOICES.include?(voice)
     return head :not_found unless GreetingCatalog::TONE_SLUGS.include?(tone)
 

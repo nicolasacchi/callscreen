@@ -6,8 +6,8 @@
     <dt>Display name</dt><dd><%= current_tenant.display_name %></dd>
     <dt>Email</dt><dd><%= current_tenant.email %></dd>
     <dt>Slug</dt><dd><%= current_tenant.slug %></dd>
-    <dt>Mobile</dt><dd><%= current_tenant.mobile_number || "(not set)" %></dd>
-    <dt>Forward-back</dt><dd><%= current_tenant.forward_back_number || "(not set)" %></dd>
+    <dt>Mobile</dt><dd><%= phone_link(current_tenant.mobile_number, fallback: "(not set)") %></dd>
+    <dt>Forward-back</dt><dd><%= phone_link(current_tenant.forward_back_number, fallback: "(not set)") %></dd>
     <dt>Dedicated number</dt><dd><%= current_tenant.dedicated_number || "(none — shared Telnyx number)" %></dd>
     <dt>railsdav username</dt><dd><%= current_tenant.railsdav_username || "(not linked)" %></dd>
   </dl>

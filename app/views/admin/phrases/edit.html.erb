@@ -1,0 +1,12 @@
+<h1>Edit phrase: <%= @phrase.label %></h1>
+
+<%= render "form" %>
+
+<hr style="border: 0; border-top: 1px solid var(--border); margin: 1.5rem 0;">
+
+<div class="actions">
+  <%= button_to "Re-render now", rerender_admin_phrase_path(@phrase), method: :post, class: "btn btn-sm" %>
+  <%= button_to "Delete", admin_phrase_path(@phrase), method: :delete,
+                class: "btn btn-danger btn-sm",
+                data: { turbo_confirm: "Delete \"#{@phrase.label}\"? In-flight calls keep playing for ~10 min, then audio is removed." } %>
+</div>

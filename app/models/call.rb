@@ -51,4 +51,12 @@ class Call < ApplicationRecord
   def ai_confidence
     ai_classification&.dig("confidence")
   end
+
+  def llm_classified?
+    ai_classification_source == "llm"
+  end
+
+  def total_cost_usd
+    (telnyx_cost_usd || 0).to_f + (moonshot_cost_usd || 0).to_f
+  end
 end

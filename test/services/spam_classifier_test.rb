@@ -96,12 +96,43 @@ class SpamClassifierTest < ActiveSupport::TestCase
     ENV["MOONSHOT_MODEL"] = "kimi-k2.6"
   end
 
+  test "captures token usage from response body" do
+    stub_moonshot(
+      body: { classification: "spam", confidence: 0.9, reason: "ok" },
+      usage: { prompt_tokens: 411, completion_tokens: 73 }
+    )
+
+    result = SpamClassifier.new("offer", from_number: "+39").classify
+    assert_equal 411, result["tokens_in"]
+    assert_equal 73,  result["tokens_out"]
+  end
+
+  test "missing usage field yields nil tokens (not crash)" do
+    # Older Moonshot responses (or non-conformant proxies) might omit usage.
+    stub_moonshot(body: { classification: "uncertain", confidence: 0.5, reason: "ok" })
+
+    result = SpamClassifier.new("hi", from_number: "+39").classify
+    assert_nil result["tokens_in"]
+    assert_nil result["tokens_out"]
+  end
+
+  test "uncertain() return value includes nil token keys" do
+    stub_request(:post, ENDPOINT).to_return(status: 500, body: "boom")
+    result = SpamClassifier.new("hi", from_number: "+39").classify
+    assert result.key?("tokens_in")
+    assert result.key?("tokens_out")
+    assert_nil result["tokens_in"]
+    assert_nil result["tokens_out"]
+  end
+
   private
 
-  def stub_moonshot(body:)
+  def stub_moonshot(body:, usage: nil)
+    payload = { choices: [ { message: { content: body.to_json } } ] }
+    payload[:usage] = usage if usage
     stub_request(:post, ENDPOINT).to_return(
       status: 200,
-      body: { choices: [ { message: { content: body.to_json } } ] }.to_json,
+      body: payload.to_json,
       headers: { "Content-Type" => "application/json" }
     )
   end

@@ -1,0 +1,34 @@
+<h1><%= @phrase.label %></h1>
+
+<div class="card">
+  <dl class="detail-grid">
+    <dt>Slug</dt>          <dd><code><%= @phrase.slug %></code></dd>
+    <dt>Owner</dt>         <dd><%= @phrase.tenant_id ? "Yours" : "Shared (read-only)" %></dd>
+    <dt>Time of day</dt>   <dd><%= @phrase.time_of_day %></dd>
+    <dt>Day of week</dt>   <dd><%= @phrase.day_of_week %></dd>
+    <dt>Render status</dt> <dd>
+      <span class="badge badge-<%= @phrase.render_status == 'rendered' ? 'legit' : 'uncertain' %>">
+        <%= @phrase.render_status %>
+      </span>
+      <% if @phrase.last_rendered_at %>
+        <small style="color: var(--text-muted);"> · <%= @phrase.last_rendered_at.in_time_zone("Europe/Rome").strftime("%Y-%m-%d %H:%M") %></small>
+      <% end %>
+      <% if @phrase.last_render_error.present? %>
+        <br><small style="color: var(--danger);"><%= @phrase.last_render_error %></small>
+      <% end %>
+    </dd>
+    <dt>Italian</dt>       <dd><%= @phrase.text_it.presence || "—" %></dd>
+    <dt>English</dt>       <dd><%= @phrase.text_en.presence || "—" %></dd>
+    <dt>Tags</dt>          <dd><%= @phrase.tags.pluck(:name).join(", ").presence || "—" %></dd>
+  </dl>
+</div>
+
+<% if @phrase.tenant_id == current_tenant.id %>
+  <div class="actions" style="margin-top: 1rem;">
+    <%= link_to "Edit", edit_admin_phrase_path(@phrase), class: "btn btn-primary btn-sm" %>
+    <%= button_to "Re-render", rerender_admin_phrase_path(@phrase), method: :post, class: "btn btn-sm" %>
+    <%= button_to "Delete", admin_phrase_path(@phrase), method: :delete,
+                  class: "btn btn-danger btn-sm",
+                  data: { turbo_confirm: "Delete this phrase?" } %>
+  </div>
+<% end %>
