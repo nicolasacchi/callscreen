@@ -46,11 +46,31 @@ class RailsdavContactsClientTest < ActiveSupport::TestCase
     assert_equal "Family", result.addressbook
   end
 
-  test "returns MISS when API responds match: false" do
+  test "match: false with no spam fields → Result(matched?: false, spam_global: false)" do
     stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup})
       .to_return(status: 200, body: { match: false }.to_json, headers: { "Content-Type" => "application/json" })
 
-    refute RailsdavContactsClient.lookup("+393331234567").matched?
+    result = RailsdavContactsClient.lookup("+393331234567")
+    refute result.matched?
+    refute result.spam_global?
+  end
+
+  test "match: false with spam_global: true returns Result with spam_global populated" do
+    stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup}).to_return(
+      status: 200,
+      body: {
+        match: false,
+        spam_global: true,
+        spam_metadata: { source: "ntfy_report", report_count: 4, first_reported_at: "2026-04-01T12:00:00Z" }
+      }.to_json,
+      headers: { "Content-Type" => "application/json" }
+    )
+
+    result = RailsdavContactsClient.lookup("+393331234567")
+    refute result.matched?, "no contact in address book → matched? stays false"
+    assert result.spam_global?, "but spam_global must be true so the TelnyxController gate fires"
+    assert_equal "ntfy_report", result.spam_metadata["source"]
+    assert_equal 4, result.spam_metadata["report_count"]
   end
 
   test "returns MISS on 4xx and 5xx" do
@@ -113,5 +133,71 @@ class RailsdavContactsClientTest < ActiveSupport::TestCase
     result = RailsdavContactsClient.lookup("+393331234567")
     assert result.matched?
     assert_equal "allow", result.policy
+  end
+
+  test "legacy response without spam fields defaults spam_global to false" do
+    stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup}).to_return(
+      status: 200,
+      body: { match: true, name: "Mario", policy: "screen", addressbook: "Family", contact_id: 1 }.to_json,
+      headers: { "Content-Type" => "application/json" }
+    )
+
+    result = RailsdavContactsClient.lookup("+393331234567")
+    assert result.matched?
+    refute result.spam_global?
+    assert_equal({}, result.spam_metadata)
+  end
+
+  test "parses spam_global and spam_metadata when present" do
+    stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup}).to_return(
+      status: 200,
+      body: {
+        match: true, name: "Mario", policy: "screen", addressbook: "Public",
+        spam_global: true,
+        spam_metadata: { first_reported_at: "2026-04-01T12:00:00Z", source: "feed:tellows", report_count: 7 }
+      }.to_json,
+      headers: { "Content-Type" => "application/json" }
+    )
+
+    result = RailsdavContactsClient.lookup("+393331234567")
+    assert result.spam_global?
+    assert_equal "2026-04-01T12:00:00Z", result.spam_metadata["first_reported_at"]
+    assert_equal "feed:tellows", result.spam_metadata["source"]
+    assert_equal 7, result.spam_metadata["report_count"]
+  end
+
+  test "drops unknown spam_metadata keys (defense in depth)" do
+    stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup}).to_return(
+      status: 200,
+      body: {
+        match: true, name: "Mario", policy: "screen", addressbook: "Public",
+        spam_global: true,
+        spam_metadata: { source: "ntfy_report", report_count: 1, secret_token: "leak", admin: true }
+      }.to_json,
+      headers: { "Content-Type" => "application/json" }
+    )
+
+    result = RailsdavContactsClient.lookup("+393331234567")
+    assert result.spam_global?
+    refute result.spam_metadata.key?("secret_token")
+    refute result.spam_metadata.key?("admin")
+  end
+
+  test "coerces malformed spam_metadata (string, array) to empty hash" do
+    [ "weird-string", [ "a", "b" ] ].each do |bad_payload|
+      stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup}).to_return(
+        status: 200,
+        body: {
+          match: true, name: "Mario", policy: "screen", addressbook: "Public",
+          spam_global: true,
+          spam_metadata: bad_payload
+        }.to_json,
+        headers: { "Content-Type" => "application/json" }
+      )
+
+      result = RailsdavContactsClient.lookup("+393331234567")
+      assert result.spam_global?
+      assert_equal({}, result.spam_metadata)
+    end
   end
 end

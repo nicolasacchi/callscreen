@@ -242,6 +242,221 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # === Spam-DB (cross-tenant) gate ===
+
+  test "spam_global match in default silent mode → reject + spam_db_global source" do
+    with_railsdav_env do
+      stub_railsdav(CALLER_FROM, username: "default", policy: "screen",
+                    name: "Robocall", addressbook: "Public",
+                    spam_global: true)
+      reject_stub = stub_action(CCID, :reject)
+      answer_stub = stub_action(CCID, :answer)
+
+      post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+
+      assert_requested reject_stub
+      assert_not_requested answer_stub
+      call = Call.find_by!(call_control_id: CCID)
+      assert_equal "spam", call.status
+      assert_equal "spam_db_global", call.ai_classification_source
+      assert_equal "done", call.flow_state
+    end
+  end
+
+  test "spam_global hits even when railsdav has no contact (match: false + spam_global: true)" do
+    with_railsdav_env do
+      # Number not in any address book, but in the global spam DB —
+      # the typical spam-DB hit shape.
+      stub_request(:get, "http://railsdav.test:3000/api/contact_lookup")
+        .with(query: { phone: CALLER_FROM, username: "default" })
+        .to_return(
+          status: 200,
+          body: {
+            match: false,
+            spam_global: true,
+            spam_metadata: { source: "feed:tellows", report_count: 12, first_reported_at: "2026-03-01T00:00:00Z" }
+          }.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
+      reject_stub = stub_action(CCID, :reject)
+
+      post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+
+      assert_requested reject_stub
+      call = Call.find_by!(call_control_id: CCID)
+      assert_equal "spam_db_global", call.ai_classification_source
+    end
+  end
+
+  test "spam_global match in polite_disclose mode → answer + flow_state=spam_disclose_playing" do
+    @tenant.update!(spam_response_mode: "polite_disclose")
+    with_railsdav_env do
+      stub_railsdav(CALLER_FROM, username: "default", policy: "screen",
+                    name: "Robocall", addressbook: "Public",
+                    spam_global: true)
+      answer_stub = stub_action(CCID, :answer)
+      reject_stub = stub_action(CCID, :reject)
+
+      post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+
+      assert_requested answer_stub
+      assert_not_requested reject_stub
+      call = Call.find_by!(call_control_id: CCID)
+      assert_equal "spam_disclose_playing", call.flow_state
+      assert_equal "spam", call.status
+    end
+  end
+
+  test "spam_global match in time_waster mode → answer + flow_state=troll_playing" do
+    @tenant.update!(spam_response_mode: "time_waster")
+    with_railsdav_env do
+      stub_railsdav(CALLER_FROM, username: "default", policy: "screen",
+                    name: "Robocall", addressbook: "Public",
+                    spam_global: true)
+      answer_stub = stub_action(CCID, :answer)
+
+      post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+
+      assert_requested answer_stub
+      call = Call.find_by!(call_control_id: CCID)
+      assert_equal "troll_playing", call.flow_state
+      assert_equal 0, call.troll_segment_index
+    end
+  end
+
+  test "railsdav policy=allow OVERRIDES spam_global=true (operator allowlist wins)" do
+    @tenant.update!(forward_back_number: "+393990000001")
+    with_railsdav_env do
+      stub_railsdav(CALLER_FROM, username: "default", policy: "allow",
+                    name: "Mama", addressbook: "Family",
+                    spam_global: true)
+      transfer_stub = stub_action(CCID, :transfer)
+      reject_stub   = stub_action(CCID, :reject)
+
+      post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+
+      assert_requested transfer_stub
+      assert_not_requested reject_stub
+      call = Call.find_by!(call_control_id: CCID)
+      assert_equal "legit", call.status
+    end
+  end
+
+  test "local whitelist OVERRIDES spam_global=true (operator allowlist wins)" do
+    @tenant.update!(forward_back_number: "+393990000001")
+    @tenant.contacts.create!(phone: CALLER_FROM, whitelisted: true)
+    with_railsdav_env do
+      stub_railsdav(CALLER_FROM, username: "default", policy: "screen",
+                    name: "Friend", addressbook: "Public",
+                    spam_global: true)
+      transfer_stub = stub_action(CCID, :transfer)
+
+      post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+
+      assert_requested transfer_stub
+      assert_equal "legit", Call.find_by!(call_control_id: CCID).status
+    end
+  end
+
+  test "rate-limit ALWAYS silent regardless of tenant.spam_response_mode (force_silent)" do
+    @tenant.update!(spam_response_mode: "time_waster", max_calls_per_caller_per_day: 1)
+    contact = @tenant.contacts.create!(phone: CALLER_FROM)
+    # Two prior calls in the rate-limit window — third one trips the limiter.
+    2.times { @tenant.calls.create!(contact: contact, from_number: CALLER_FROM, status: :spam) }
+    reject_stub = stub_action(CCID, :reject)
+    answer_stub = stub_action(CCID, :answer)
+
+    post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+
+    assert_requested reject_stub
+    assert_not_requested answer_stub
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal "rate_limit", call.ai_classification_source
+    assert_equal "done", call.flow_state
+  end
+
+  test "rule action_block ALWAYS silent regardless of tenant.spam_response_mode (force_silent)" do
+    @tenant.update!(spam_response_mode: "time_waster")
+    @tenant.rules.create!(rule_type: :prefix, action: :block, value: "+39333", active: true)
+    reject_stub = stub_action(CCID, :reject)
+    answer_stub = stub_action(CCID, :answer)
+
+    post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+
+    assert_requested reject_stub
+    assert_not_requested answer_stub
+    assert_equal "rule", Call.find_by!(call_control_id: CCID).ai_classification_source
+  end
+
+  test "blacklist preserves silent-no-notify (no NotifyJob enqueued)" do
+    @tenant.contacts.create!(phone: CALLER_FROM, blacklisted: true)
+    stub_action(CCID, :reject)
+
+    assert_no_enqueued_jobs only: NotifyJob do
+      post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+    end
+  end
+
+  test "call.answered in spam_disclose_playing → playback_start of spam_disclose phrase" do
+    setup_pre_rendered_greeting("spam_disclose")
+    seed_call(flow_state: "spam_disclose_playing", status: :spam)
+    pb_stub = stub_action(CCID, :playback_start)
+
+    post_event answered_payload
+
+    assert_requested pb_stub
+  ensure
+    cleanup_greeting_files
+  end
+
+  test "playback.ended in spam_disclose_playing → hangup" do
+    seed_call(flow_state: "spam_disclose_playing", status: :spam)
+    hangup_stub = stub_action(CCID, :hangup)
+
+    post_event event_envelope("call.playback.ended")
+
+    assert_requested hangup_stub
+    assert_equal "done", Call.find_by!(call_control_id: CCID).flow_state
+  end
+
+  test "playback.ended in troll_playing advances segment index" do
+    seed_call(flow_state: "troll_playing", status: :spam, answered_at: 5.seconds.ago)
+    setup_pre_rendered_greeting("troll_hold_loop")
+    pb_stub = stub_action(CCID, :playback_start)
+
+    post_event event_envelope("call.playback.ended")
+
+    assert_requested pb_stub
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal 1, call.troll_segment_index
+    assert_equal "troll_playing", call.flow_state
+  ensure
+    cleanup_greeting_files
+  end
+
+  test "troll_playing hangs up when spam_troll_max_seconds elapsed" do
+    @tenant.update!(spam_troll_max_seconds: 30)
+    seed_call(flow_state: "troll_playing", status: :spam, answered_at: 60.seconds.ago)
+    hangup_stub = stub_action(CCID, :hangup)
+
+    post_event event_envelope("call.playback.ended")
+
+    assert_requested hangup_stub
+    assert_equal "done", Call.find_by!(call_control_id: CCID).flow_state
+  end
+
+  test "troll_playing hangs up at end of segment sequence" do
+    seed_call(flow_state: "troll_playing", status: :spam,
+              answered_at: 5.seconds.ago,
+              troll_segment_index: TelnyxController::TROLL_SEGMENTS.size - 1)
+    hangup_stub = stub_action(CCID, :hangup)
+
+    post_event event_envelope("call.playback.ended")
+
+    assert_requested hangup_stub
+    assert_equal "done", Call.find_by!(call_control_id: CCID).flow_state
+  end
+
   # === call.answered → playback_start (greeting only, no gather) ===
 
   test "call.answered with pre-rendered audio plays greeting via playback_start" do
@@ -727,13 +942,16 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
 
   private
 
-  def seed_call(flow_state:, contact: nil, screening_transcript: nil)
+  def seed_call(flow_state:, contact: nil, screening_transcript: nil, status: :screening,
+                answered_at: nil, troll_segment_index: 0)
     @tenant.calls.create!(
       call_sid: CCID, call_control_id: CCID,
       from_number: CALLER_FROM, to_number: TENANT_TO,
-      flow_state: flow_state, status: :screening,
+      flow_state: flow_state, status: status,
       contact: contact || @tenant.contacts.find_or_create_by!(phone: CALLER_FROM),
-      screening_transcript: screening_transcript
+      screening_transcript: screening_transcript,
+      answered_at: answered_at,
+      troll_segment_index: troll_segment_index
     )
   end
 
@@ -806,12 +1024,17 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     ENV["RAILSDAV_API_TOKEN"] = prev_token
   end
 
-  def stub_railsdav(phone, username:, policy:, name:, addressbook:)
+  def stub_railsdav(phone, username:, policy:, name:, addressbook:, spam_global: false, spam_metadata: nil)
+    body = { match: true, name: name, policy: policy, addressbook: addressbook, contact_id: 1 }
+    if spam_global
+      body[:spam_global]   = true
+      body[:spam_metadata] = spam_metadata || { source: "ntfy_report", report_count: 3, first_reported_at: "2026-04-01T12:00:00Z" }
+    end
     stub_request(:get, "http://railsdav.test:3000/api/contact_lookup")
       .with(query: { phone: phone, username: username })
       .to_return(
         status: 200,
-        body: { match: true, name: name, policy: policy, addressbook: addressbook, contact_id: 1 }.to_json,
+        body: body.to_json,
         headers: { "Content-Type" => "application/json" }
       )
   end

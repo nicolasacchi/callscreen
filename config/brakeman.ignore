@@ -45,13 +45,13 @@
     {
       "warning_type": "Mass Assignment",
       "warning_code": 70,
-      "fingerprint": "b35eaa3ca8ec392c23fecab2194054903d82fae0ffdbb2e8926f19cd3934fed9",
+      "fingerprint": "42935751b049095050c60a63e1bf55af79f0ce88327c482ff1e91c6761a111a1",
       "check_name": "PermitAttributes",
       "message": "Potentially dangerous key allowed for mass assignment",
       "file": "app/controllers/admin/tenants_controller.rb",
-      "line": 84,
+      "line": 85,
       "link": "https://brakemanscanner.org/docs/warning_types/mass_assignment/",
-      "code": "params.require(:tenant).permit(:name, :slug, :email, :mobile_number, :forward_back_number, :dedicated_number, :railsdav_username, :ntfy_url, :ntfy_priority, :greeting_variant, :greeting_voice, :greeting_tone, :greeting_language, :greeting_text, :voicemail_prompt, :spam_sensitivity, :max_recording_seconds, :screening_speech_timeout, :max_calls_per_caller_per_day, :auto_blacklist_threshold, :auto_blacklist_window_days, :admin, :active, :password, :password_confirmation)",
+      "code": "params.require(:tenant).permit(:name, :slug, :email, :mobile_number, :forward_back_number, :dedicated_number, :railsdav_username, :ntfy_url, :ntfy_priority, :greeting_variant, :greeting_voice, :greeting_tone, :greeting_language, :greeting_text, :voicemail_prompt, :spam_sensitivity, :max_recording_seconds, :screening_speech_timeout, :max_calls_per_caller_per_day, :auto_blacklist_threshold, :auto_blacklist_window_days, :spam_response_mode, :spam_troll_max_seconds, :auto_detect_language, :voice_clone_active, :voice_rotation_enabled, :admin, :active, ({ :voice_rotation_voices => ([]) }), :password, :password_confirmation)",
       "render_path": null,
       "location": {
         "type": "method",
@@ -61,9 +61,9 @@
       "user_input": ":admin",
       "confidence": "High",
       "cwe_id": [915],
-      "note": "Intentional. Admin::TenantsController is gated by `before_action :require_super_admin!`, so only an existing super-admin can mass-assign :admin or :active. The corresponding ProfilesController (used by all other tenants for self-edit) does NOT permit :admin. Reviewed 2026-04-30."
+      "note": "Intentional. Admin::TenantsController is gated by `before_action :require_super_admin!`, so only an existing super-admin can mass-assign :admin or :active. The corresponding ProfilesController (used by all other tenants for self-edit) does NOT permit :admin. Reviewed 2026-05-09."
     }
   ],
-  "updated": "2026-04-30 21:03:00 +0000",
+  "updated": "2026-05-09 14:21:00 +0000",
   "brakeman_version": "8.0.4"
 }

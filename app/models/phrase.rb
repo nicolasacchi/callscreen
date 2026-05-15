@@ -6,12 +6,17 @@ class Phrase < ApplicationRecord
     formal_lei informal_tu business_meeting brief_lei brief_tu
     apologetic direct warm delegate_voicemail bilingual_short
     clarify voicemail_prompt goodbye_spam goodbye_short no_answer
+    spam_disclose
+    troll_intro troll_hold_loop troll_voice_menu troll_apology troll_disclose
   ].freeze
 
   KINDS = %w[
     user
     system_clarify system_voicemail_prompt
     system_goodbye_spam system_goodbye_short system_no_answer
+    system_spam_disclose
+    system_troll_intro system_troll_hold_loop system_troll_voice_menu
+    system_troll_apology system_troll_disclose
   ].freeze
 
   RENDER_STATUSES = %w[pending rendering rendered failed].freeze

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_08_120000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_09_120200) do
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "actor_id"
@@ -51,6 +51,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_08_120000) do
     t.decimal "telnyx_cost_usd", precision: 12, scale: 8
     t.integer "tenant_id", null: false
     t.string "to_number"
+    t.integer "troll_segment_index", default: 0, null: false
     t.boolean "unattributed", default: false, null: false
     t.datetime "updated_at", null: false
     t.text "voicemail_transcript"
@@ -215,7 +216,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_08_120000) do
     t.string "screening_speech_timeout", default: "3"
     t.integer "sign_in_count", default: 0, null: false
     t.string "slug"
+    t.string "spam_response_mode", default: "silent", null: false
     t.float "spam_sensitivity", default: 0.5
+    t.integer "spam_troll_max_seconds", default: 90, null: false
     t.string "time_zone", default: "Europe/Rome", null: false
     t.integer "tod_afternoon_hour", default: 12, null: false
     t.integer "tod_evening_hour", default: 18, null: false

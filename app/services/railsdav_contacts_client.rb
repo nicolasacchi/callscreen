@@ -1,11 +1,16 @@
 class RailsdavContactsClient
-  Result = Struct.new(:matched?, :name, :policy, :addressbook, keyword_init: true) do
+  Result = Struct.new(:matched?, :name, :policy, :addressbook, :spam_global, :spam_metadata, keyword_init: true) do
     alias_method :match?, :matched?
+
+    def spam_global?
+      spam_global == true
+    end
   end
-  MISS = Result.new(matched?: false, name: nil, policy: nil, addressbook: nil).freeze
+  MISS = Result.new(matched?: false, name: nil, policy: nil, addressbook: nil, spam_global: false, spam_metadata: {}).freeze
 
   ALLOWED_POLICIES = %w[screen allow block].freeze
   MAX_STRING_LEN = 200
+  SPAM_METADATA_KEYS = %w[first_reported_at source report_count].freeze
 
   def self.lookup(phone, username: nil)
     new(phone, username: username).lookup
@@ -40,7 +45,21 @@ class RailsdavContactsClient
     return MISS unless response.success?
 
     body = response.parsed_response
-    return MISS unless body.is_a?(Hash) && body["match"]
+    return MISS unless body.is_a?(Hash)
+
+    spam_global   = body["spam_global"] == true
+    spam_metadata = sanitize_spam_metadata(body["spam_metadata"])
+
+    # Number is not in any address book but might still be in the global
+    # spam DB — most spam calls fall in this branch. Return a Result with
+    # `matched?: false` but `spam_global` populated, so TelnyxController's
+    # priority-3.5 gate can fire on numbers we have no contact for.
+    unless body["match"]
+      return Result.new(
+        matched?: false, name: nil, policy: nil, addressbook: nil,
+        spam_global: spam_global, spam_metadata: spam_metadata
+      )
+    end
 
     policy = body["policy"].to_s
     policy = nil unless ALLOWED_POLICIES.include?(policy)
@@ -49,7 +68,9 @@ class RailsdavContactsClient
       matched?: true,
       name: sanitize_string(body["name"]),
       policy: policy,
-      addressbook: sanitize_string(body["addressbook"])
+      addressbook: sanitize_string(body["addressbook"]),
+      spam_global: spam_global,
+      spam_metadata: spam_metadata
     )
   rescue Net::OpenTimeout, Net::ReadTimeout, HTTParty::Error, SocketError, Errno::ECONNREFUSED, JSON::ParserError => e
     Rails.logger.warn("RailsdavContactsClient lookup failed: #{e.class}: #{e.message}")
@@ -67,5 +88,17 @@ class RailsdavContactsClient
     cleaned = value.to_s.gsub(/[\r\n\x00-\x1F\x7F]/, "").strip
     return nil if cleaned.empty?
     cleaned.first(MAX_STRING_LEN)
+  end
+
+  # Coerce the spam_metadata field into a Hash with only the expected keys.
+  # Anything unrecognized is dropped so adversarial railsdav responses
+  # cannot bleed extra fields into AuditLog or NtfyNotifier.
+  def sanitize_spam_metadata(value)
+    return {} unless value.is_a?(Hash)
+    out = {}
+    out["first_reported_at"] = sanitize_string(value["first_reported_at"]) if value["first_reported_at"]
+    out["source"]            = sanitize_string(value["source"])            if value["source"]
+    out["report_count"]      = value["report_count"].to_i                  if value["report_count"]
+    out
   end
 end

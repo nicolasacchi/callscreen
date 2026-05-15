@@ -29,6 +29,8 @@ class Call < ApplicationRecord
     recording
     transfer_dialing
     hanging_up_after_speak
+    spam_disclose_playing
+    troll_playing
     done
   ].freeze
 

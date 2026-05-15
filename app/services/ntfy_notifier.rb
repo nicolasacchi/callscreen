@@ -55,10 +55,11 @@ class NtfyNotifier
       base = ENV.fetch("APP_DOMAIN", "https://phone.example.com")
       tok_w = NtfyActionToken.encode(call_id: call.id, action: "whitelist")
       tok_s = NtfyActionToken.encode(call_id: call.id, action: "mark_spam")
+      tok_g = NtfyActionToken.encode(call_id: call.id, action: "report_spam_globally")
       [
         "http, Whitelist, #{base}/ntfy/calls/#{call.id}/whitelist?t=#{tok_w}, method=POST, clear=true",
         "http, Mark spam, #{base}/ntfy/calls/#{call.id}/spam?t=#{tok_s}, method=POST, clear=true",
-        "view, Call back, tel:#{call.from_number}, clear=true"
+        "http, Report globally, #{base}/ntfy/calls/#{call.id}/report_spam_globally?t=#{tok_g}, method=POST, clear=true"
       ].join("; ")
     end
   end

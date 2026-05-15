@@ -16,6 +16,7 @@ class Tenant < ApplicationRecord
   has_many :default_pool_phrases, through: :tenant_phrases, source: :phrase
 
   ALLOWED_VOICES    = %w[if_sara im_nicola af_heart am_michael cb_it cb_en alice man woman].freeze
+  SPAM_RESPONSE_MODES = %w[silent polite_disclose time_waster].freeze
   USERNAME_FORMAT   = /\A[a-z0-9._-]+\z/i
   E164_FORMAT       = /\A\+?[0-9]{6,15}\z/
   SLUG_FORMAT       = /\A[a-z0-9._-]+\z/
@@ -54,6 +55,10 @@ class Tenant < ApplicationRecord
             numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 100, allow_nil: true }
   validates :auto_blacklist_window_days,
             numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 365, allow_nil: true }
+
+  validates :spam_response_mode, inclusion: { in: SPAM_RESPONSE_MODES }
+  validates :spam_troll_max_seconds,
+            numericality: { only_integer: true, greater_than_or_equal_to: 30, less_than_or_equal_to: 300 }
 
   validate :screening_speech_timeout_valid
   validate :only_one_default_tenant

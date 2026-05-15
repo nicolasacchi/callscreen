@@ -51,7 +51,7 @@ class NtfyNotifierTest < ActiveSupport::TestCase
     end
   end
 
-  test "Actions header has 3 segments and embeds tel: URI when call: is passed" do
+  test "Actions header has 3 segments (Whitelist / Mark spam / Report globally) when call: is passed" do
     tenant = tenants(:default)
     call = tenant.calls.create!(
       call_sid: "actions-test-1", call_control_id: "actions-test-1",
@@ -67,8 +67,9 @@ class NtfyNotifierTest < ActiveSupport::TestCase
         h.scan(/;/).size == 2 &&  # 3 actions => 2 separators
         h.include?("Whitelist") &&
         h.include?("Mark spam") &&
-        h.include?("tel:+393331112222") &&
-        h.include?("/ntfy/calls/#{call.id}/whitelist")
+        h.include?("Report globally") &&
+        h.include?("/ntfy/calls/#{call.id}/whitelist") &&
+        h.include?("/ntfy/calls/#{call.id}/report_spam_globally")
     end
   end
 

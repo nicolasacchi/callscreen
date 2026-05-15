@@ -4,9 +4,12 @@
 class NtfyActionsController < ApplicationController
   protect_from_forgery with: :null_session
 
+  ACTIVE_SPAM_FLOW_STATES = %w[spam_disclose_playing troll_playing].freeze
+
   def whitelist; perform!(:whitelist); end
   def mark_spam; perform!(:mark_spam); end
   def mark_legit; perform!(:mark_legit); end
+  def report_spam_globally; perform!(:report_spam_globally); end
 
   private
 
@@ -24,15 +27,45 @@ class NtfyActionsController < ApplicationController
       contact = call.contact || call.tenant.contacts.find_or_create_by!(phone: call.from_number)
       contact.update!(whitelisted: true, blacklisted: false)
       audit!(call, "whitelist_number", contact_id: contact.id)
+      # If the operator whitelists while a polite_disclose / troll
+      # response is still mid-flight, abort the active call — otherwise
+      # the spammer keeps getting trolled even though we've decided
+      # they're legit.
+      abort_active_spam_response(call)
     when :mark_spam
       call.update!(status: :spam)
       audit!(call, "mark_spam")
     when :mark_legit
       call.update!(status: :legit)
       audit!(call, "mark_legit")
+    when :report_spam_globally
+      result = RailsdavSpamReporter.report(
+        call.from_number,
+        source:   "ntfy_report",
+        username: call.tenant&.railsdav_username,
+        notes:    nil
+      )
+      audit!(call, "report_spam_globally",
+             railsdav_ack: result[:ok] == true,
+             railsdav_error: result[:error])
+      call.update!(status: :spam) unless call.spam?
+      # Surface failures to the operator's phone — ntfy treats non-200
+      # as an error and shows it in the notification.
+      return head :bad_gateway unless result[:ok]
     end
 
     head :ok
+  end
+
+  def abort_active_spam_response(call)
+    return unless ACTIVE_SPAM_FLOW_STATES.include?(call.flow_state)
+    return if call.call_control_id.blank?
+    cc_client.hangup(call.call_control_id)
+    call.update!(flow_state: "done")
+  end
+
+  def cc_client
+    @cc_client ||= CallControlClient.new
   end
 
   def audit!(call, action_name, **metadata)

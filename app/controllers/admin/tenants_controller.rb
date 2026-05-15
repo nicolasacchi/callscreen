@@ -75,6 +75,7 @@ module Admin
         :spam_sensitivity, :max_recording_seconds, :screening_speech_timeout,
         :max_calls_per_caller_per_day, :auto_blacklist_threshold,
         :auto_blacklist_window_days,
+        :spam_response_mode, :spam_troll_max_seconds,
         :auto_detect_language,
         :voice_clone_active, :voice_rotation_enabled,
         :admin, :active,
