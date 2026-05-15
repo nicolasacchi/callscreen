@@ -10,6 +10,8 @@
 # When `voice:` is given, render only that voice; otherwise iterate the
 # tenant's active voice set. For shared phrases (tenant_id: nil) the
 # active voice set is the union across every tenant.
+require "open3"
+
 class PhraseRenderJob < ApplicationJob
   queue_as :rendering
   discard_on ActiveRecord::RecordNotFound
