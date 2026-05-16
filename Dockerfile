@@ -41,15 +41,21 @@ FROM base AS tts_build
 
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
-      python3-pip python3-dev build-essential gcc git && \
+      python3-pip python3-dev build-essential gcc git ca-certificates curl && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
-RUN python3 -m venv /opt/tts_venv && \
+# Kokoro pins to Python <3.13 but the base image ships Python 3.13. Use uv
+# to install a standalone Python 3.12 build into /opt/python and create the
+# tts venv from it. uv itself is only needed at build time.
+ENV UV_PYTHON_INSTALL_DIR=/opt/python
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh && \
+    uv python install 3.12 && \
+    "$(uv python find 3.12)" -m venv /opt/tts_venv && \
     /opt/tts_venv/bin/python -m pip install --upgrade pip && \
     /opt/tts_venv/bin/python -m pip install --no-cache-dir \
         torch --index-url https://download.pytorch.org/whl/cpu && \
     /opt/tts_venv/bin/python -m pip install --no-cache-dir \
-        chatterbox-tts soundfile numpy
+        chatterbox-tts "kokoro>=0.9.4" soundfile numpy
 
 # === Ruby gem build stage ===============================================
 FROM base AS ruby_build
@@ -85,6 +91,7 @@ RUN groupadd --system --gid 1000 rails && \
 # Copy built artifacts: gems, application, and the Python TTS venv
 COPY --chown=rails:rails --from=ruby_build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --chown=rails:rails --from=ruby_build /rails /rails
+COPY --chown=rails:rails --from=tts_build /opt/python /opt/python
 COPY --chown=rails:rails --from=tts_build /opt/tts_venv /opt/tts_venv
 
 RUN mkdir -p /rails/storage/recordings /rails/storage/greetings \
