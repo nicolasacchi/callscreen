@@ -12,9 +12,23 @@
 production:
   cleanup_recordings:
     class: CleanupRecordingsJob
-    queue: default
+    queue: rendering
     schedule: "0 3 * * * Europe/Rome"
 
   clear_solid_queue_finished_jobs:
     command: "SolidQueue::Job.clear_finished_in_batches(sleep_between_batches: 0.3)"
     schedule: every hour at minute 12
+
+  # Re-enqueue phrases wedged in render_status "rendering" (worker SIGKILLed
+  # mid-render leaves no Ruby rescue to flip the status back).
+  requeue_stuck_renders:
+    class: RequeueStuckRendersJob
+    queue: rendering
+    schedule: every 15 minutes
+
+  # Hang up + finalize calls stranded mid-flow by a dropped Telnyx command,
+  # so a caller can't be left in dead air indefinitely.
+  sweep_stuck_calls:
+    class: SweepStuckCallsJob
+    queue: default
+    schedule: every 5 minutes

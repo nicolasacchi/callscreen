@@ -141,6 +141,10 @@ class CallControlClient
     end
   rescue StandardError => e
     Rails.logger.error("CallControlClient #{action} failed: #{e.class}: #{e.message}")
+    # Surface transport failures (timeouts/connection errors) — a dropped
+    # outbound command can strand a live call leg; the stuck-call sweep cleans
+    # it up, but the operator should still see the underlying failures.
+    Sentry.capture_exception(e) if defined?(Sentry)
     failure(e.message)
   end
 
