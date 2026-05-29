@@ -1,8 +1,30 @@
 class TranscribeRecordingJob < ApplicationJob
   queue_as :default
   discard_on ActiveRecord::RecordNotFound
-  retry_on Net::OpenTimeout, Net::ReadTimeout, HTTParty::Error,
-           wait: :polynomially_longer, attempts: 3
+
+  RETRYABLE = [
+    Net::OpenTimeout, Net::ReadTimeout, HTTParty::Error,
+    WhisperClient::TransportError, RecordingDownloader::TransientError
+  ].freeze
+
+  retry_on(*RETRYABLE, wait: :polynomially_longer, attempts: 4) do |job, error|
+    report_failure(job.arguments.first, error)
+  end
+
+  def self.report_failure(call_id, error)
+    Rails.logger.error("TranscribeRecordingJob failed for call #{call_id} (#{error.class.name})")
+    Sentry.capture_exception(error) if defined?(Sentry)
+    call = Call.find_by(id: call_id)
+    call&.update!(status: :failed)
+    NtfyNotifier.notify(
+      title: "Transcription failed",
+      message: "Call #{call_id} failed transcription (#{error.class.name})",
+      priority: "high",
+      tags: [ "warning" ],
+      url: call&.tenant&.ntfy_url,
+      default_priority: call&.tenant&.ntfy_priority
+    )
+  end
 
   def perform(call_id)
     call = Call.find(call_id)
@@ -27,15 +49,10 @@ class TranscribeRecordingJob < ApplicationJob
       )
       call.update!(notified_at: Time.current)
     end
+  rescue *RETRYABLE
+    raise # defer to retry_on; report_failure runs once on exhaustion
   rescue => e
-    Rails.logger.error("TranscribeRecordingJob failed for call #{call_id} (#{e.class.name})")
-    call&.update!(status: :failed)
-    NtfyNotifier.notify(
-      title: "Transcription failed",
-      message: "Call #{call_id} failed transcription (#{e.class.name})",
-      priority: "high",
-      tags: [ "warning" ]
-    )
+    self.class.report_failure(call_id, e)
     raise
   end
 

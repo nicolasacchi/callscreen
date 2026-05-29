@@ -42,6 +42,7 @@ class Tenant < ApplicationRecord
 
   validates :greeting_voice,    inclusion: { in: ALLOWED_VOICES }, allow_blank: true
   validates :greeting_language, format: { with: /\A[a-z]{2}-[A-Z]{2}\z/, allow_blank: true }
+  validate  :voice_rotation_voices_known
   validate  :greeting_variant_in_catalog
   validate  :greeting_tone_in_catalog
 
@@ -146,6 +147,24 @@ class Tenant < ApplicationRecord
   end
 
   private
+
+  # voice_rotation_voices is a free-text comma-separated column edited from
+  # the profile/tenant forms. Every entry must be a known Kokoro/Chatterbox
+  # voice or this tenant's own cloned-voice dir (_t<own id>). This blocks a
+  # tenant from injecting a path-traversal component (e.g. "../../etc") that
+  # would flow into GreetingsStorage.path_for, and from referencing another
+  # tenant's cloned voice (_t<other id>).
+  CLONED_VOICE_FORMAT = /\A_t\d+\z/
+
+  def voice_rotation_voices_known
+    return if voice_rotation_voices.blank?
+    own_clone = cloned_voice_dir if persisted?
+    bad = voice_rotation_voice_list.reject do |v|
+      ALLOWED_VOICES.include?(v) || (v.match?(CLONED_VOICE_FORMAT) && v == own_clone)
+    end
+    return if bad.empty?
+    errors.add(:voice_rotation_voices, "contains unknown or non-owned voices: #{bad.join(', ')}")
+  end
 
   def voice_clone_active_requires_consent_and_sample
     return unless voice_clone_active?

@@ -309,30 +309,48 @@ class ScreeningJobTest < ActiveJob::TestCase
 
   # === Failure path ===
 
-  test "Whisper non-2xx → empty transcript → status=unknown (Whisper swallows errors)" do
+  test "Whisper transport failure raises (retryable) and is NOT misclassified as silence" do
     stub_request(:post, %r{faster-whisper.test:8000/v1/audio/transcriptions})
       .to_return(status: 500, body: "{}")
+
+    # A sidecar outage must raise (so the job retries) — never commit it as
+    # status :unknown ("caller said nothing"). See REL-1.
+    assert_no_enqueued_jobs only: NotifyJob do
+      assert_raises(WhisperClient::TransportError) { ScreeningJob.new.perform(@call.id) }
+    end
+    @call.reload
+    assert_not_equal "unknown", @call.status
+  end
+
+  test "genuine empty transcript (Whisper 200, no speech) → status=unknown + notify" do
+    stub_whisper("") # successful transcription, caller genuinely said nothing
 
     assert_enqueued_jobs 1, only: NotifyJob do
       ScreeningJob.new.perform(@call.id)
     end
-    @call.reload
-    # WhisperClient returns nil on failure → coerces to "" in the job → unknown.
-    # Operator still gets a notification and can investigate the empty call.
-    assert_equal "unknown", @call.status
+    assert_equal "unknown", @call.reload.status
   end
 
-  test "RecordingDownloader failure → status=failed + raise (job retries)" do
+  test "RecordingDownloader 5xx is transient: raises, deferred to retry (not :failed per-attempt)" do
     stub_request(:get, "https://api.telnyx.com/v2/recordings/abc.wav")
       .to_return(status: 500, body: "")
-    assert_raises do
+    assert_raises(RecordingDownloader::TransientError) do
       ScreeningJob.new.perform(@call.id)
     end
     @call.reload
-    assert_equal "failed", @call.status
-    # flow_state is left untouched on failure — controller's call.hangup
-    # handler will set it to "done" when Telnyx finalizes the leg.
+    # Per-attempt no longer flips to :failed (a later retry may succeed); the
+    # terminal handler does that only when retries are exhausted.
+    assert_not_equal "failed", @call.status
     assert_equal "hanging_up_after_speak", @call.flow_state
+  end
+
+  test "report_terminal_failure marks call :failed and alerts the operator" do
+    notify = stub_request(:post, ENV["NTFY_URL"]).to_return(status: 200, body: "")
+    ScreeningJob.report_terminal_failure(@call.id, WhisperClient::TransportError.new("boom"))
+    @call.reload
+    assert_equal "failed", @call.status
+    assert_not_nil @call.notified_at
+    assert_requested notify
   end
 
   private

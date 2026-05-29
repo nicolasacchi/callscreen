@@ -38,7 +38,11 @@ class PhraseRenderJobTest < ActiveJob::TestCase
   end
 
   test "active voice set excludes cloned voice prefix" do
-    @tenant.update!(voice_rotation_voices: "im_nicola,_t99,af_heart")
+    # Defense-in-depth: even if a _t* clone dir slips into the list (the
+    # Tenant validator now blocks non-owned ones, so bypass it here),
+    # active_voices_for must still exclude every _t* entry — clones render
+    # via a separate Chatterbox path, not this job.
+    @tenant.update_columns(voice_rotation_voices: "im_nicola,_t99,af_heart")
     job = PhraseRenderJob.new
     voices = job.send(:active_voices_for, @tenant)
     refute_includes voices, "_t99"

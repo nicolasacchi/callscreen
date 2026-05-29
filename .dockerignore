@@ -52,3 +52,11 @@
 
 # Ignore local vendor bundle
 /vendor/bundle
+
+# Ignore the local Python venv and HuggingFace model cache. These are large
+# (the venv is multi-GB) host-only dirs; the production image builds its own
+# TTS venv into /opt/tts_venv (see Dockerfile) and caches models under the
+# storage volume's .hf_cache. Without these excludes, `COPY . .` bakes the
+# entire host venv into the image.
+/.venv
+/.hf_cache

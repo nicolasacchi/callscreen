@@ -12,6 +12,12 @@ require "uri"
 # AWS pre-signed URLs carry their own auth in query params; we don't add
 # the TELNYX_API_KEY header to S3 hosts to avoid leaking it.
 class RecordingDownloader
+  # Raised for retryable download failures (HTTP 5xx/429, timeouts, connection
+  # errors) so ScreeningJob/TranscribeRecordingJob retry rather than
+  # dead-lettering the recording. Permanent failures (bad host, path
+  # traversal, 4xx) keep raising plain RuntimeError and are NOT retried.
+  class TransientError < StandardError; end
+
   TRUSTED_HOST_PATTERNS = [
     /\A[a-z0-9.-]+\.telnyx\.com\z/i,
     /\As3\.amazonaws\.com\z/i,
@@ -50,8 +56,20 @@ class RecordingDownloader
       headers["Authorization"] = "Bearer #{ENV['TELNYX_API_KEY']}"
     end
 
-    response = HTTParty.get(@call.recording_url, headers: headers, timeout: 60)
-    raise "Download failed: HTTP #{response.code}" unless response.success?
+    response =
+      begin
+        HTTParty.get(@call.recording_url, headers: headers, timeout: 60)
+      rescue Net::OpenTimeout, Net::ReadTimeout, SocketError, Errno::ECONNREFUSED, Errno::ECONNRESET => e
+        raise TransientError, "#{e.class}: #{e.message}"
+      end
+
+    unless response.success?
+      code = response.code.to_i
+      # 5xx / 429 are transient (Telnyx or S3 hiccup) → retryable. Other 4xx
+      # responses are permanent (expired URL, gone) and stay a hard failure.
+      raise TransientError, "Download failed: HTTP #{code}" if code >= 500 || code == 429
+      raise "Download failed: HTTP #{code}"
+    end
 
     File.binwrite(expanded, response.body)
     expanded

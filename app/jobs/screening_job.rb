@@ -5,8 +5,42 @@
 class ScreeningJob < ApplicationJob
   queue_as :default
   discard_on ActiveRecord::RecordNotFound
-  retry_on Net::OpenTimeout, Net::ReadTimeout, HTTParty::Error,
-           wait: :polynomially_longer, attempts: 3
+
+  # Transport failures (recording download / Whisper) are transient: retry
+  # with backoff rather than committing a wrong disposition. WhisperClient now
+  # raises TransportError on a sidecar outage instead of returning nil, so an
+  # outage no longer masquerades as "the caller said nothing" (status:
+  # :unknown). RecordingDownloader raises TransientError on 5xx/429/timeouts
+  # so a transient download blip no longer dead-letters.
+  RETRYABLE = [
+    Net::OpenTimeout, Net::ReadTimeout, HTTParty::Error,
+    WhisperClient::TransportError, RecordingDownloader::TransientError
+  ].freeze
+
+  # When retries are exhausted, surface the failure to the operator (Sentry +
+  # an ntfy alert) and mark the call :failed — otherwise a real caller's
+  # screening could fail silently with no signal.
+  retry_on(*RETRYABLE, wait: :polynomially_longer, attempts: 4) do |job, error|
+    report_terminal_failure(job.arguments.first, error)
+  end
+
+  def self.report_terminal_failure(call_id, error)
+    Rails.logger.error("ScreeningJob giving up on call #{call_id}: #{error.class}: #{error.message}")
+    Sentry.capture_exception(error) if defined?(Sentry)
+    call = Call.find_by(id: call_id)
+    return unless call
+    call.update!(status: :failed)
+    return if call.notified_at?
+    NtfyNotifier.notify(
+      title: "⚠️ Screening non riuscito",
+      message: "Impossibile classificare la chiamata da #{call.from_number} (#{error.class}).",
+      priority: "high",
+      tags: [ "warning" ],
+      url: call.tenant&.ntfy_url,
+      default_priority: call.tenant&.ntfy_priority
+    )
+    call.update!(notified_at: Time.current)
+  end
 
   def perform(call_id)
     call = Call.find(call_id)
@@ -60,10 +94,13 @@ class ScreeningJob < ApplicationJob
     else
       finalize(call, status: :uncertain, ai_classification: result, source: "llm")
     end
+  rescue *RETRYABLE
+    # Defer to retry_on: re-raise so the backoff/exhaustion handler runs.
+    # Do NOT mark :failed per-attempt (a later attempt may succeed).
+    raise
   rescue => e
-    Rails.logger.error("ScreeningJob failed for call #{call_id}: #{e.class}: #{e.message}")
-    Sentry.capture_exception(e) if defined?(Sentry)
-    Call.find_by(id: call_id)&.update!(status: :failed)
+    # Non-retryable / unexpected error → terminal now. Surface it.
+    self.class.report_terminal_failure(call_id, e)
     raise
   end
 

@@ -122,6 +122,69 @@ class GreetingCatalog
     }
   }.freeze
 
+  # Spam-response system phrases used by the polite_disclose / time_waster
+  # modes. Mirrors the data migration db/migrate/20260509120200_seed_spam_response_phrases.rb
+  # so that fresh databases (which load schema.rb and skip data migrations)
+  # can seed these via db/seeds.rb. The migration keeps its own frozen copy
+  # for already-migrated databases — do not couple it to this constant.
+  SPAM_RESPONSE_PHRASES = [
+    {
+      slug:    "spam_disclose",
+      label:   "Spam disclose (polite rejection)",
+      text_it: "Questo numero non accetta chiamate non sollecitate. " \
+               "Per assistenza, scrivere via email all'indirizzo del titolare. Arrivederci.",
+      text_en: "This number does not accept unsolicited calls. " \
+               "If you need assistance, please contact us by email. Goodbye."
+    },
+    {
+      slug:    "troll_intro",
+      label:   "Troll intro",
+      text_it: "Buongiorno. La sua chiamata è importante per noi. " \
+               "La preghiamo di rimanere in linea.",
+      text_en: "Good day. Your call is important to us. Please stay on the line."
+    },
+    {
+      slug:    "troll_hold_loop",
+      label:   "Troll hold loop",
+      text_it: "Tutti i nostri operatori sono attualmente impegnati con altre chiamate. " \
+               "Stiamo lavorando per servirla al più presto. Grazie per la sua pazienza. " \
+               "La preghiamo di non riagganciare, la sua chiamata sarà evasa appena possibile.",
+      text_en: "All our operators are currently busy with other calls. " \
+               "We are working to serve you as soon as possible. Thank you for your patience. " \
+               "Please do not hang up, your call will be answered shortly."
+    },
+    {
+      slug:    "troll_voice_menu",
+      label:   "Troll voice menu",
+      text_it: "Per parlare con un nostro operatore, prema uno. " \
+               "Per il servizio clienti, prema due. " \
+               "Per altre opzioni, prema tre. " \
+               "Per ripetere il menu, prema cancelletto.",
+      text_en: "To speak to an operator, press one. " \
+               "For customer service, press two. " \
+               "For other options, press three. " \
+               "To repeat this menu, press hash."
+    },
+    {
+      slug:    "troll_apology",
+      label:   "Troll apology",
+      text_it: "Ci scusiamo per l'attesa prolungata. " \
+               "Il nostro centralino sta riscontrando un volume insolito di chiamate. " \
+               "La ringraziamo per la sua cortese pazienza.",
+      text_en: "We apologize for the extended wait. " \
+               "Our switchboard is experiencing an unusual call volume. " \
+               "Thank you for your patience."
+    },
+    {
+      slug:    "troll_disclose",
+      label:   "Troll disclose",
+      text_it: "La informiamo che questa chiamata è stata identificata come spam " \
+               "e archiviata. Arrivederci.",
+      text_en: "Please be advised that this call has been identified as spam " \
+               "and recorded. Goodbye."
+    }
+  ].freeze
+
   ALL_SLUGS = (SLUGS + SYSTEM_PHRASES.keys).freeze
 
   # === Voices (who is speaking) ===

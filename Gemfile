@@ -35,6 +35,10 @@ gem "sentry-rails"
 group :development, :test do
   gem "debug", platforms: %i[mri windows], require: "debug/prelude"
   gem "brakeman", require: false
+  # Audits Gemfile.lock against the ruby-advisory-db. bin/bundler-audit (run by
+  # CI's scan_ruby job) requires this gem; it was previously referenced but not
+  # declared, so the CI gem-vulnerability scan failed to load.
+  gem "bundler-audit", require: false
   gem "rubocop-rails-omakase", require: false
 end
 
