@@ -64,7 +64,10 @@ class SpamClassifier
   end
 
   def system_prompt
-    sensitivity = @sensitivity || Setting.get("spam_sensitivity") || 0.5
+    # Sensitivity is resolved once by the caller (ScreeningJob reads the
+    # per-tenant value, falling back to the global Setting) and passed in, so
+    # this no longer consults Setting a second time (ARCH-4).
+    sensitivity = @sensitivity || 0.5
     <<~PROMPT
       You are a phone call spam classifier for an Italian phone number.
       You receive the transcript of what a caller said when asked to identify themselves and state their reason for calling.

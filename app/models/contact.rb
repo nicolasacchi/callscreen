@@ -1,4 +1,6 @@
 class Contact < ApplicationRecord
+  include RotatingCursor
+
   belongs_to :tenant
   has_many :calls, dependent: :nullify
 

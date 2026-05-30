@@ -4,7 +4,9 @@
 # part of the URL breaks the signature.
 class NtfyActionToken
   PURPOSE    = "ntfy_action".freeze
-  EXPIRES_IN = 14.days
+  # A leaked/forwarded notification URL stays actionable until expiry; 48h is a
+  # realistic triage window and limits the replay blast radius (SEC-1).
+  EXPIRES_IN = 48.hours
 
   def self.encode(call_id:, action:)
     verifier.generate(

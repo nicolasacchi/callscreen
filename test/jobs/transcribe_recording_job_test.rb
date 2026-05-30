@@ -102,19 +102,16 @@ class TranscribeRecordingJobTest < ActiveJob::TestCase
     FileUtils.rm_f(expected)
   end
 
-  test "Whisper failure leaves call status :failed and pushes ntfy warning" do
+  test "Whisper transport failure raises (retryable, deferred to retry — not silently completed)" do
     stub_request(:get, @call.recording_url).to_return(status: 200, body: "FAKE_WAV")
     stub_request(:post, @whisper_url).to_return(status: 500, body: "internal error")
-    stub_request(:post, @ntfy_url).to_return(status: 200, body: "")
 
-    # Whisper returns nil on error; the job currently logs "[transcription failed]" placeholder text.
-    perform_enqueued_jobs do
-      TranscribeRecordingJob.perform_later(@call.id)
+    # A Whisper outage now raises TransportError so the job retries, instead
+    # of silently marking the voicemail "completed" with placeholder text.
+    assert_raises(WhisperClient::TransportError) do
+      TranscribeRecordingJob.new.perform(@call.id)
     end
-
-    @call.reload
-    assert_equal "completed", @call.status # Whisper failure is non-raising; call still completed
-    assert_equal "[transcription failed]", @call.voicemail_transcript
+    assert_not_equal "completed", @call.reload.status
   ensure
     expected = Rails.root.join("storage/recordings/#{@call.call_sid}.wav").to_s
     FileUtils.rm_f(expected)

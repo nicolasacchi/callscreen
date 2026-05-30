@@ -13,11 +13,14 @@
 require "open3"
 
 class PhraseRenderJob < ApplicationJob
+  include TimedSubprocess
+
   queue_as :rendering
   discard_on ActiveRecord::RecordNotFound
   retry_on StandardError, attempts: 3, wait: :polynomially_longer
 
   TONES = %w[natural slow].freeze
+  RENDER_TIMEOUT_SECS = 180
 
   def perform(phrase_id, voice: nil)
     phrase = Phrase.find(phrase_id)
@@ -82,12 +85,7 @@ class PhraseRenderJob < ApplicationJob
             "--out",     out_path.to_s ]
 
     Rails.logger.info("PhraseRenderJob: phrase=#{phrase.id} voice=#{voice} tone=#{tone}")
-    output = nil
-    Open3.popen2e(*cmd) do |_in, out, wait_thr|
-      output = out.read
-      status = wait_thr.value
-      raise "render_phrase exit=#{status.exitstatus}: #{output.to_s.last(2_000)}" unless status.success?
-    end
+    run_timed(cmd, timeout: RENDER_TIMEOUT_SECS, label: "render_phrase")
   end
 
   def mark_rendered_noop(phrase)

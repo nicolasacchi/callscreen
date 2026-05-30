@@ -1,29 +1,26 @@
-# Be sure to restart your server when you modify this file.
-
-# Define an application-wide content security policy.
-# See the Securing Rails Applications Guide for more information:
-# https://guides.rubyonrails.org/security.html#content-security-policy-header
-
-# Rails.application.configure do
-#   config.content_security_policy do |policy|
-#     policy.default_src :self, :https
-#     policy.font_src    :self, :https, :data
-#     policy.img_src     :self, :https, :data
-#     policy.object_src  :none
-#     policy.script_src  :self, :https
-#     policy.style_src   :self, :https
-#     # Specify URI for violation reports
-#     # policy.report_uri "/csp-violation-report-endpoint"
-#   end
+# Content Security Policy for the admin UI (csp_meta_tag is rendered in both
+# layouts). The admin panel guards call recordings + cross-tenant data, so a
+# baseline CSP is real defense-in-depth behind ERB auto-escaping (SEC-2/UI-2).
 #
-#   # Generate session nonces for permitted importmap, inline scripts, and inline styles.
-#   config.content_security_policy_nonce_generator = ->(request) { request.session.id.to_s }
-#   config.content_security_policy_nonce_directives = %w(script-src style-src)
-#
-#   # Automatically add `nonce` to `javascript_tag`, `javascript_include_tag`, and `stylesheet_link_tag`
-#   # if the corresponding directives are specified in `content_security_policy_nonce_directives`.
-#   # config.content_security_policy_nonce_auto = true
-#
-#   # Report violations without enforcing the policy.
-#   # config.content_security_policy_report_only = true
-# end
+# script-src / style-src keep 'unsafe-inline' for now because the layout uses
+# an inline <style> block, an inline service-worker <script>, and inline
+# onchange="this.form.submit()" handlers. The remaining directives
+# (frame-ancestors, object-src, base-uri, form-action) are strict and add
+# genuine clickjacking / base-tag / form-hijack protection at zero breakage
+# risk. P2 (admin UX) migrates the inline handlers to Stimulus + nonces so
+# 'unsafe-inline' can be dropped from script-src.
+Rails.application.configure do
+  config.content_security_policy do |policy|
+    policy.default_src     :self
+    policy.font_src        :self, :data
+    policy.img_src         :self, :data
+    policy.object_src      :none
+    policy.script_src      :self, :unsafe_inline
+    policy.style_src       :self, :unsafe_inline
+    policy.connect_src     :self
+    policy.media_src       :self
+    policy.base_uri        :self
+    policy.form_action     :self
+    policy.frame_ancestors :none
+  end
+end

@@ -17,7 +17,7 @@ class CreatePhrasesAndTags < ActiveRecord::Migration[8.1]
       t.string  :time_of_day,    null: false, default: "any"
       t.string  :render_status,  null: false, default: "pending"
       t.datetime :last_rendered_at
-      t.string  :last_render_error
+      t.string :last_render_error
       t.timestamps
     end
     # Slug uniqueness scoped per tenant (system rows have tenant_id NULL).

@@ -41,51 +41,10 @@ class CallControlClient
     post(call_control_id, :speak, payload: payload, voice: voice, language: language, payload_type: payload_type)
   end
 
-  # Plays an audio file then captures DTMF digits.
-  #
-  # IMPORTANT: Telnyx Voice API's gather_using_audio is DTMF-ONLY. It does
-  # NOT support speech transcription, despite TeXML's <Gather> verb having
-  # transcriptionEngine. For speech capture, use record_start (then
-  # transcribe externally) or transcription_start (streaming). The
-  # `language` arg here only validates valid_digits, not transcription.
-  #
-  # Telnyx requires maximum_digits/minimum_digits to be in [1, 128] if
-  # present at all — sending 0 returns a 422. We omit them unless the caller
-  # explicitly opts in (e.g., for an "enter your extension" gather).
-  def gather_using_audio(call_control_id, audio_url:, language: "it-IT",
-                         valid_digits: nil,
-                         maximum_digits: nil,
-                         minimum_digits: nil,
-                         total_timeout_secs: 30)
-    body = {
-      audio_url: audio_url,
-      language: language,
-      total_timeout_secs: total_timeout_secs
-    }
-    body[:valid_digits]   = valid_digits   if valid_digits
-    body[:maximum_digits] = maximum_digits if maximum_digits&.positive?
-    body[:minimum_digits] = minimum_digits if minimum_digits&.positive?
-    post(call_control_id, :gather_using_audio, body)
-  end
-
-  # DTMF-only counterpart to gather_using_audio. Speaks a TTS prompt, then
-  # captures keypad digits. NOT used for speech recognition (see
-  # gather_using_audio's note for details).
-  def gather_using_speak(call_control_id, payload:, voice: "alice", language: "it-IT",
-                         maximum_digits: nil,
-                         minimum_digits: nil,
-                         total_timeout_secs: 30)
-    body = {
-      payload: payload,
-      voice: voice,
-      language: language,
-      payload_type: "text",
-      total_timeout_secs: total_timeout_secs
-    }
-    body[:maximum_digits] = maximum_digits if maximum_digits&.positive?
-    body[:minimum_digits] = minimum_digits if minimum_digits&.positive?
-    post(call_control_id, :gather_using_speak, body)
-  end
+  # NOTE: gather_using_audio / gather_using_speak (DTMF capture) were removed —
+  # the Voice API screening flow captures speech via record_start + Whisper, and
+  # nothing called them. See git history if an "enter your extension" DTMF
+  # feature is ever needed.
 
   # Starts recording the active call leg. Telnyx fires call.recording.saved
   # when the file is ready.
@@ -141,6 +100,10 @@ class CallControlClient
     end
   rescue StandardError => e
     Rails.logger.error("CallControlClient #{action} failed: #{e.class}: #{e.message}")
+    # Surface transport failures (timeouts/connection errors) — a dropped
+    # outbound command can strand a live call leg; the stuck-call sweep cleans
+    # it up, but the operator should still see the underlying failures.
+    Sentry.capture_exception(e) if defined?(Sentry)
     failure(e.message)
   end
 

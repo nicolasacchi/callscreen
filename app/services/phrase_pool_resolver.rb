@@ -137,14 +137,8 @@ class PhrasePoolResolver
     return nil if candidates.empty?
     return candidates.first unless owner
 
-    cursor_attr = owner.is_a?(Contact) ? :phrase_rotation_index : :phrase_rotation_index
-    chosen = nil
-    owner.with_lock do
-      idx = owner.public_send(cursor_attr) || 0
-      chosen = candidates[idx % candidates.size]
-      next_idx = (idx + 1) % (candidates.size * 1_000)
-      owner.update_columns(cursor_attr => next_idx)
-    end
-    chosen
+    # Both Contact and Tenant include RotatingCursor and name the cursor column
+    # phrase_rotation_index.
+    owner.advance_rotation!(candidates, column: :phrase_rotation_index)
   end
 end

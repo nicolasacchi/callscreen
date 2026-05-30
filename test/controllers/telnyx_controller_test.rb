@@ -509,6 +509,19 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_equal "screening_recording", call.flow_state
   end
 
+  test "playback.ended honours the tenant's screening_speech_timeout setting" do
+    @tenant.update!(screening_speech_timeout: "7")
+    seed_call(flow_state: "screening_prompt_playing")
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/record_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: '{"data":{"result":"ok"}}')
+
+    post_event event_envelope("call.playback.ended")
+
+    assert_equal 7, captured["timeout_secs"], "per-tenant speech timeout should drive silence detection"
+  end
+
   test "speak.ended in screening_prompt_playing also triggers record_start (TTS-greeting fallback)" do
     seed_call(flow_state: "screening_prompt_playing")
     record_stub = stub_action(CCID, :record_start)
@@ -578,6 +591,22 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
       post_event recording_saved_payload(url: "https://x/a.wav")
       post_event recording_saved_payload(url: "https://x/a.wav")
     end
+  end
+
+  test "recording.saved with no URL is a no-op; a later delivery with the URL still wins" do
+    # REL-3: a nil-URL delivery is ignored (nothing to process), so the later
+    # delivery that carries the real URL still advances + enqueues exactly once,
+    # and the URL is persisted (not lost).
+    seed_call(flow_state: "screening_recording")
+    stub_action(CCID, :speak)
+
+    assert_enqueued_jobs 1, only: ScreeningJob do
+      post_event recording_saved_payload(url: nil)
+      post_event recording_saved_payload(url: "https://x/late.wav")
+    end
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal "hanging_up_after_speak", call.flow_state
+    assert_equal "https://x/late.wav", call.recording_url, "the real URL must be persisted, not lost"
   end
 
   # === Multi-language: caller-language driven greeting + voice swap ===
@@ -938,6 +967,36 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     # No state change — the controller has no use for the event in this flow.
     assert_equal "screening_recording", Call.find_by!(call_control_id: CCID).flow_state
+  end
+
+  # === Malformed / partial payloads degrade gracefully (TEST-5) ===
+
+  test "valid JSON without a data envelope is acknowledged (200) and creates nothing" do
+    assert_no_difference -> { Call.count } do
+      post_event({ "foo" => "bar" })
+    end
+    assert_response :success
+  end
+
+  test "call.initiated with missing from/to does not create a Call and still 200s" do
+    assert_no_difference -> { Call.count } do
+      post_event event_envelope("call.initiated", { "call_control_id" => "v3:malformed-init" })
+    end
+    assert_response :success
+    assert_nil Call.find_by(call_control_id: "v3:malformed-init")
+  end
+
+  test "recording.saved for an unknown call is a no-op 200" do
+    post_event event_envelope("call.recording.saved", { "call_control_id" => "v3:unknown-rec" })
+    assert_response :success
+  end
+
+  test "unparseable body reaching the controller is acknowledged (200), not a 500" do
+    # Content-Type text/plain so Rails' own JSON middleware doesn't 400 it
+    # first; this exercises the controller's request_payload JSON.parse rescue.
+    post telnyx_voice_url(token: @token), params: "<<not json>>",
+         headers: { "Content-Type" => "text/plain" }
+    assert_response :success
   end
 
   private

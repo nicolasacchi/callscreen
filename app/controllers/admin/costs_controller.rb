@@ -32,15 +32,14 @@ module Admin
       @heatmap = windowed
         .group_by_day_of_week(:created_at, time_zone: tz)
         .group_by_hour_of_day(:created_at, time_zone: tz)
-        .sum(Arel.sql("COALESCE(telnyx_cost_usd, 0) + COALESCE(moonshot_cost_usd, 0)"))
+        .sum(Arel.sql(Call::TOTAL_COST_SQL))
       @heatmap_max = (@heatmap.values.map(&:to_f).max || 0.0)
 
       ranked = windowed
         .group(:contact_id, :from_number)
-        .order(Arel.sql("SUM(COALESCE(telnyx_cost_usd, 0) + COALESCE(moonshot_cost_usd, 0)) DESC"))
+        .order(Arel.sql("SUM(#{Call::TOTAL_COST_SQL}) DESC"))
         .limit(10)
-        .pluck(:contact_id, :from_number,
-               Arel.sql("SUM(COALESCE(telnyx_cost_usd, 0) + COALESCE(moonshot_cost_usd, 0))"))
+        .pluck(:contact_id, :from_number, Call.total_cost_sum_sql)
       contacts_by_id = Contact.where(id: ranked.map(&:first).compact).index_by(&:id)
       @top_contacts = ranked.map { |cid, num, total|
         { contact: contacts_by_id[cid], from_number: num, total: total.to_f }
@@ -49,9 +48,7 @@ module Admin
       if super_admin?
         per_tenant = Call.where("created_at > ?", window)
                          .group(:tenant_id)
-                         .pluck(:tenant_id,
-                                Arel.sql("SUM(COALESCE(telnyx_cost_usd, 0) + COALESCE(moonshot_cost_usd, 0))"),
-                                Arel.sql("COUNT(*)"))
+                         .pluck(:tenant_id, Call.total_cost_sum_sql, Arel.sql("COUNT(*)"))
         tenants_by_id = Tenant.where(id: per_tenant.map(&:first)).index_by(&:id)
         @per_tenant = per_tenant.map { |tid, total, count|
           { tenant: tenants_by_id[tid], total: total.to_f, count: count }
@@ -66,10 +63,10 @@ module Admin
     # Regular tenant: their own calls only.
     def resolve_scope
       if super_admin? && params[:tenant_id].blank?
-        ["All tenants", Call.all]
+        [ "All tenants", Call.all ]
       else
         t = viewing_tenant
-        ["Tenant: #{t.display_name}", t.calls]
+        [ "Tenant: #{t.display_name}", t.calls ]
       end
     end
   end

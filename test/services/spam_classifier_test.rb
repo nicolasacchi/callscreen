@@ -84,6 +84,7 @@ class SpamClassifierTest < ActiveSupport::TestCase
   end
 
   test "uses Moonshot model from MOONSHOT_MODEL env var" do
+    prev = ENV["MOONSHOT_MODEL"]
     ENV["MOONSHOT_MODEL"] = "kimi-k2.5"
     stub_moonshot(body: { classification: "uncertain", confidence: 0.0, reason: "ok" })
 
@@ -93,7 +94,9 @@ class SpamClassifierTest < ActiveSupport::TestCase
       JSON.parse(req.body)["model"] == "kimi-k2.5"
     end
   ensure
-    ENV["MOONSHOT_MODEL"] = "kimi-k2.6"
+    # Restore the run-wide value (test_helper sets moonshot-v1-8k) rather than a
+    # hard-coded literal, so this test can't leak a wrong model to later tests.
+    ENV["MOONSHOT_MODEL"] = prev
   end
 
   test "captures token usage from response body" do

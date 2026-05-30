@@ -6,9 +6,9 @@ module Admin
     before_action :load_phrase, only: [ :edit, :update, :destroy, :show, :rerender ]
 
     def index
-      shared = Phrase.where(tenant_id: nil)
-      own    = Phrase.where(tenant_id: viewing_tenant.id)
-      scope  = Phrase.where(id: shared.pluck(:id) + own.pluck(:id))
+      # Shared (tenant_id: nil) + own rows, as one indexed predicate — reuses
+      # the existing scope instead of plucking ids into an IN list (PERF-4).
+      scope  = Phrase.visible_to(viewing_tenant)
       scope  = scope.where(time_of_day: params[:tod])      if params[:tod].present?
       scope  = scope.where(day_of_week: params[:dow])      if params[:dow].present?
       scope  = scope.where(render_status: params[:status]) if params[:status].present?
@@ -76,22 +76,12 @@ module Admin
 
     def assign_tags(phrase)
       return unless params.dig(:phrase, :tag_names)
-      names = params[:phrase][:tag_names].to_s.split(",").map(&:strip).reject(&:empty?).uniq
-      tags = names.map do |n|
-        Tag.find_or_create_by!(tenant: viewing_tenant, name: n)
-      end
-      phrase.tags = tags
+      Tag.assign_csv(phrase, params[:phrase][:tag_names], tenant: viewing_tenant)
     end
 
     def audit(action_name, subject, metadata = {})
-      AuditLog.create!(
-        actor:        current_tenant,
-        tenant:       viewing_tenant,
-        action:       action_name,
-        subject_type: subject.class.name,
-        subject_id:   subject.id,
-        metadata:     metadata
-      )
+      AuditLog.record(action: action_name, subject: subject,
+                      tenant: viewing_tenant, actor: current_tenant, **metadata)
     end
   end
 end

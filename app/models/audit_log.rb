@@ -13,4 +13,18 @@ class AuditLog < ApplicationRecord
   validates :subject_id, presence: true
 
   scope :recent, -> { order(created_at: :desc) }
+
+  # Single create! site for the audit schema, used by the admin controllers and
+  # the ntfy action endpoints (CQ-5). `subject` is any AR record; remaining
+  # kwargs become metadata. System actions pass actor: nil.
+  def self.record(action:, subject:, tenant:, actor: nil, **metadata)
+    create!(
+      action:       action.to_s,
+      actor:        actor,
+      tenant:       tenant,
+      subject_type: subject.class.name,
+      subject_id:   subject.id,
+      metadata:     metadata
+    )
+  end
 end

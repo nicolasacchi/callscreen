@@ -11,7 +11,7 @@
         <%= @phrase.render_status %>
       </span>
       <% if @phrase.last_rendered_at %>
-        <small style="color: var(--text-muted);"> · <%= @phrase.last_rendered_at.in_time_zone("Europe/Rome").strftime("%Y-%m-%d %H:%M") %></small>
+        <small style="color: var(--text-muted);"> · <%= @phrase.last_rendered_at.in_time_zone(tenant_time_zone).strftime("%Y-%m-%d %H:%M") %></small>
       <% end %>
       <% if @phrase.last_render_error.present? %>
         <br><small style="color: var(--danger);"><%= @phrase.last_render_error %></small>

@@ -103,4 +103,45 @@ class CleanupRecordingsJobTest < ActiveJob::TestCase
     assert_in_delta 0.0014, old_call.telnyx_cost_usd.to_f, 1e-9
     assert_equal 12, old_call.billable_seconds
   end
+
+  test "sweeps orphan recordings older than retention, keeps referenced + recent files" do
+    Setting.set("auto_delete_days", "30")
+    dir = Rails.root.join("storage/recordings")
+    FileUtils.mkdir_p(dir)
+    orphan_old    = dir.join("orphan-old-sweep.wav")
+    orphan_recent = dir.join("orphan-recent-sweep.wav")
+    referenced    = dir.join("referenced-sweep.wav")
+    [ orphan_old, orphan_recent, referenced ].each { |f| File.binwrite(f, "wav") }
+    File.utime(40.days.ago.to_time, 40.days.ago.to_time, orphan_old)
+    @tenant.calls.create!(call_sid: "ref-sweep-1", from_number: "+390000000009",
+                          status: :completed, recording_local_path: referenced.to_s,
+                          created_at: 5.days.ago)
+
+    CleanupRecordingsJob.new.perform
+
+    assert_not File.exist?(orphan_old), "old orphan should be swept"
+    assert File.exist?(orphan_recent), "recent orphan should be kept"
+    assert File.exist?(referenced), "referenced recording should be kept"
+  ensure
+    [ orphan_old, orphan_recent, referenced ].each { |f| FileUtils.rm_f(f) if f }
+  end
+
+  test "scrubs caller phone numbers from audit-log metadata past retention" do
+    Setting.set("auto_delete_transcripts_days", "30")
+    old_log = AuditLog.create!(action: "mark_spam", tenant: @tenant,
+                               subject_type: "Call", subject_id: 1,
+                               metadata: { "source" => "ntfy", "from" => "+393331112222" },
+                               created_at: 60.days.ago)
+    fresh_log = AuditLog.create!(action: "mark_spam", tenant: @tenant,
+                                 subject_type: "Call", subject_id: 2,
+                                 metadata: { "from" => "+393334445555" },
+                                 created_at: 2.days.ago)
+
+    CleanupRecordingsJob.new.perform
+
+    old_log.reload
+    assert_nil old_log.metadata["from"], "stale caller number should be scrubbed"
+    assert_equal "ntfy", old_log.metadata["source"], "non-PII metadata kept"
+    assert_equal "+393334445555", fresh_log.reload.metadata["from"], "recent log untouched"
+  end
 end

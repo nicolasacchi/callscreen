@@ -10,8 +10,20 @@
 #
 # Either way, on success the tenant.voice_clone_rendered_at gets set.
 class VoiceCloneRenderJob < ApplicationJob
+  include TimedSubprocess
+
   queue_as :default
   discard_on ActiveRecord::RecordNotFound
+
+  # A cloned render is a best-effort fallback voice; retry transient blips but
+  # surface terminal failure (Sentry) so the operator isn't silently left on
+  # the default voice with voice_clone_rendered_at stuck nil.
+  retry_on StandardError, attempts: 3, wait: :polynomially_longer do |job, error|
+    Rails.logger.error("VoiceCloneRenderJob giving up tenant #{job.arguments.first}: #{error.class}: #{error.message}")
+    Sentry.capture_exception(error) if defined?(Sentry)
+  end
+
+  CLONE_TIMEOUT_SECS = 900
 
   def perform(tenant_id)
     tenant = Tenant.find(tenant_id)
@@ -60,17 +72,12 @@ class VoiceCloneRenderJob < ApplicationJob
     cmd = [ tts_python, script, tenant.id.to_s, "--sample", sample_abs, "--from-db" ]
 
     Rails.logger.info("VoiceCloneRenderJob: running #{cmd.join(' ')}")
-    output = nil
-    Open3.popen2e(*cmd) do |_in, out, wait_thr|
-      output = out.read
-      status = wait_thr.value
-      if status.success? && output.to_s.include?("RENDERED #{tenant.id}")
-        tenant.update!(voice_clone_rendered_at: Time.current)
-        Rails.logger.info("VoiceCloneRenderJob: rendered tenant #{tenant.id}")
-      else
-        Rails.logger.error("VoiceCloneRenderJob failed for tenant #{tenant.id}: #{output.to_s.last(4_000)}")
-        raise "clone_render exited non-zero"
-      end
+    output = run_timed(cmd, timeout: CLONE_TIMEOUT_SECS, label: "clone_render")
+    if output.to_s.include?("RENDERED #{tenant.id}")
+      tenant.update!(voice_clone_rendered_at: Time.current)
+      Rails.logger.info("VoiceCloneRenderJob: rendered tenant #{tenant.id}")
+    else
+      raise "clone_render produced no success marker: #{output.to_s.last(2_000)}"
     end
   end
 end

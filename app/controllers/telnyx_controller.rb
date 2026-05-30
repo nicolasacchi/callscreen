@@ -21,7 +21,7 @@ class TelnyxController < ApplicationController
   #   call.initiated → answer
   #   call.answered → playback_start(greeting)         state=screening_prompt_playing
   #   call.playback.ended → record_start(max_length)   state=screening_recording
-  #   call.recording.saved → enqueue ScreeningJob      state=processing
+  #   call.recording.saved → goodbye + ScreeningJob    state=hanging_up_after_speak
   #   ScreeningJob → Whisper → SpamClassifier → finalize
   #   call.hangup → mark done
 
@@ -29,7 +29,8 @@ class TelnyxController < ApplicationController
   SCREENING_RECORDING_MAX_SECS = 30
   # Stop recording after this many seconds of silence. Lets a caller who
   # said "Sono Mario, chiamo per la cena" finish + pause + get hung up
-  # in ~8s instead of waiting the full max_length=30s timeout.
+  # in ~8s instead of waiting the full max_length=30s timeout. Default when
+  # the tenant's screening_speech_timeout is "auto"/blank.
   SCREENING_SILENCE_TIMEOUT_SECS = 3
 
   skip_before_action :verify_authenticity_token
@@ -104,88 +105,29 @@ class TelnyxController < ApplicationController
     call.assign_attributes(call_attrs) if call.new_record?
     call.save!
 
-    # === Apply policy in priority order ===
+    # Decide accept/block via the CallPolicy ladder, then apply it. Keeping the
+    # decision pure (no side effects) makes the "who gets through" rules
+    # independently testable; the controller owns the side effects below.
+    decision = CallPolicy.decide(contact: contact, tenant: tenant, external: external, from: from)
+    decision.rule&.increment!(:hit_count)
+    apply_decision(call, tenant, decision, ccid: ccid)
+  end
 
-    # 0. Per-caller rate limit (within 15min). Whitelisted callers and
-    # railsdav-allowed callers are exempt from this gate so a known good
-    # caller never gets blocked by a high call volume.
-    # Always silent regardless of tenant.spam_response_mode — the same
-    # caller hammering us in time-waster mode would self-DoS our Telnyx bill.
-    if rate_limit_exceeded?(contact, tenant: tenant, external: external)
-      limit = tenant.max_calls_per_caller_per_day || 10
+  # Applies a CallPolicy::Decision: issue the configured spam response, forward
+  # an allowed caller, or answer-and-screen by default.
+  def apply_decision(call, tenant, decision, ccid:)
+    case decision.disposition
+    when :spam
       apply_spam_response(call, tenant, ccid: ccid,
-                          reason: "Rate limited (more than #{limit} calls in 24h)",
-                          source: "rate_limit",
-                          force_silent: true)
-      return
-    end
-
-    # 1. Railsdav (centralized contacts) policy
-    if external.matched?
-      case external.policy
-      when "block"
-        apply_spam_response(call, tenant, ccid: ccid,
-                            reason: "Railsdav policy: block (#{external.addressbook})",
-                            source: "railsdav")
-        return
-      when "allow"
-        call.update!(status: :legit, flow_state: "transfer_dialing")
-        forward_or_record(call, tenant)
-        return
-      end
-    end
-
-    # 2. Local blacklist (operator override).
-    # Preserves historical silent-no-notify behavior: an operator who
-    # blacklists a number doesn't want a push every time it dials in.
-    if contact.blacklisted?
-      apply_spam_response(call, tenant, ccid: ccid,
-                          reason: "Contact blacklisted by operator",
-                          source: "blacklist",
-                          notify: false)
-      return
-    end
-
-    # 3. Local whitelist (operator override)
-    if contact.whitelisted?
+                          reason: decision.reason, source: decision.source,
+                          force_silent: decision.force_silent, notify: decision.notify)
+    when :allow
       call.update!(status: :legit, flow_state: "transfer_dialing")
       forward_or_record(call, tenant)
-      return
+    when :answer
+      call.update!(status: :screening, flow_state: "answered")
+      cc_client.answer(ccid)
     end
-
-    # 3.5. Cross-tenant global spam DB (railsdav-mastered).
-    # Placed AFTER both railsdav `policy=allow` and local whitelist so
-    # operator-curated allowlists override the global list — a friend
-    # whose number was scraped into a community feed still gets through.
-    if external.spam_global?
-      apply_spam_response(call, tenant, ccid: ccid,
-                          reason: spam_global_reason(external),
-                          source: "spam_db_global")
-      return
-    end
-
-    # 4. Per-tenant rules (prefix/regex).
-    # action_block is always silent — operator-defined hard blocks
-    # semantically mean "this should never reach me".
-    rule_match = tenant.rules.active.find { |r| r.matches_number?(from) }
-    if rule_match
-      rule_match.increment!(:hit_count)
-      if rule_match.action_block?
-        apply_spam_response(call, tenant, ccid: ccid,
-                            reason: "Tenant rule blocked",
-                            source: "rule",
-                            force_silent: true)
-        return
-      elsif rule_match.action_allow?
-        call.update!(status: :legit, flow_state: "transfer_dialing")
-        forward_or_record(call, tenant)
-        return
-      end
-    end
-
-    # 5. Default — answer and proceed to greeting
-    call.update!(status: :screening, flow_state: "answered")
-    cc_client.answer(ccid)
   end
 
   def handle_answered(payload)
@@ -227,7 +169,7 @@ class TelnyxController < ApplicationController
         format: "wav",
         channels: "single",
         max_length: SCREENING_RECORDING_MAX_SECS,
-        timeout_secs: SCREENING_SILENCE_TIMEOUT_SECS,
+        timeout_secs: screening_silence_timeout(call.tenant),
         play_beep: false,
         trim: "trim-silence")
     when "hanging_up_after_speak"
@@ -248,38 +190,38 @@ class TelnyxController < ApplicationController
     url  = p["recording_urls"]&.values&.first || p["recording_url"]
     call = Call.find_by(call_control_id: ccid)
     return unless call
+    # A delivery with no URL carries nothing to process; ignore it so a later
+    # delivery that DOES carry the URL still wins the flow_state claim below
+    # (rather than a nil-URL delivery winning and stranding ScreeningJob with
+    # no recording to fetch).
+    return if url.blank?
 
-    # Idempotent: Telnyx fires recording.saved twice (one for the
-    # action callback, one for the recordingStatusCallback). First
-    # webhook wins; the rest are no-ops.
-    return if call.recording_url.present?
+    attrs = { recording_url: url, duration_seconds: p["duration_seconds"].to_i }
 
-    call.update!(
-      recording_url: url,
-      duration_seconds: p["duration_seconds"].to_i
-    )
-
-    case call.flow_state
-    when "screening_recording"
-      # Caller is still on the line — close their leg promptly so they
-      # don't hear ~30 seconds of silence while Whisper + the LLM run.
-      # Play a short "thanks, goodbye" and hangup on speak.ended (existing
-      # hanging_up_after_speak branch). Classification continues async in
-      # ScreeningJob, which writes status/transcript/ai_classification
-      # without touching flow_state.
-      call.update!(flow_state: "hanging_up_after_speak")
+    # Idempotent + race-safe. Telnyx fires recording.saved twice (the action
+    # callback and the recordingStatusCallback). We claim the work with an
+    # atomic flow_state transition, so only the first delivery proceeds — even
+    # if two arrive concurrently, or the first carries no recording_url.
+    # (Keying the dedupe on flow_state instead of recording_url avoids the
+    # double-goodbye / double-ScreeningJob a nil first URL previously risked.)
+    if Call.where(id: call.id, flow_state: "screening_recording")
+           .update_all(attrs.merge(flow_state: "hanging_up_after_speak")).positive?
+      # Caller is still on the line — close their leg promptly so they don't
+      # hear ~30 s of silence while Whisper + the LLM run. Play a short
+      # goodbye and hang up on speak.ended (hanging_up_after_speak branch).
+      # Classification continues async in ScreeningJob.
+      call.reload
       play_goodbye(call, phrase: "goodbye_spam")
       ScreeningJob.perform_later(call.id)
-    when "recording"
-      # Legacy whitelisted-voicemail path (greeting + record without
-      # screening, used when an allow-listed caller has no
-      # forward_back_number set). Just transcribe + notify.
-      call.update!(status: :completed, flow_state: "done")
+    elsif Call.where(id: call.id, flow_state: "recording")
+              .update_all(attrs.merge(status: Call.statuses[:completed], flow_state: "done")).positive?
+      # Legacy whitelisted-voicemail path (greeting + record, no screening).
       TranscribeRecordingJob.perform_later(call.id)
       cc_client.hangup(ccid)
     else
-      Rails.logger.info("recording.saved in unexpected flow_state=#{call.flow_state}")
-      cc_client.hangup(ccid)
+      # Already advanced past the recording states — a duplicate or stale
+      # delivery. Don't re-hang up; the original leg is already being handled.
+      Rails.logger.info("recording.saved in non-recording flow_state=#{call.flow_state}; ignoring")
     end
   end
 
@@ -339,22 +281,29 @@ class TelnyxController < ApplicationController
 
   # === Outbound command shortcuts ===
 
+  # Play a pre-rendered WAV if we have one, else fall back to Telnyx TTS
+  # (alice) with the given text. Single home for the four play_* helpers'
+  # identical playback-or-speak tail (CQ-8).
+  def play_audio_or_speak(call, audio_url:, fallback_text:, lang:)
+    if audio_url
+      cc_client.playback_start(call.call_control_id, audio_url: audio_url)
+    else
+      cc_client.speak(call.call_control_id,
+        payload: fallback_text,
+        voice: "alice",
+        language: language_locale(lang))
+    end
+  end
+
   # Short "thanks, goodbye" before hangup. Pre-rendered audio if available;
   # falls back to TTS via speak. The follow-up call.speak.ended OR
   # call.playback.ended (state=hanging_up_after_speak) issues the hangup.
   def play_goodbye(call, phrase:)
-    tenant = call.tenant
     lang  = caller_language(call)
     voice = pick_voice_for_call!(call)
-    audio = greeting_audio_url_for(tenant, slug: phrase, language: lang, voice: voice)
-    if audio
-      cc_client.playback_start(call.call_control_id, audio_url: audio)
-    else
-      cc_client.speak(call.call_control_id,
-        payload: phrase_text(phrase, lang) || "Arrivederci.",
-        voice: "alice",
-        language: language_locale(lang))
-    end
+    audio = greeting_audio_url_for(call.tenant, slug: phrase, language: lang, voice: voice)
+    play_audio_or_speak(call, audio_url: audio,
+                        fallback_text: phrase_text(phrase, lang) || "Arrivederci.", lang: lang)
   end
 
   def play_greeting(call)
@@ -367,17 +316,11 @@ class TelnyxController < ApplicationController
       call.update_columns(selected_phrase_slug: phrase.slug)
       Rails.logger.info("phrase_resolver: call_control_id=#{call.call_control_id} slug=#{phrase.slug} voice=#{voice}")
     end
-    slug   = phrase&.slug || tenant.greeting_variant
-    audio  = greeting_audio_url_for(tenant, slug: slug, language: lang, voice: voice)
-
-    if audio
-      cc_client.playback_start(call.call_control_id, audio_url: audio)
-    else
-      cc_client.speak(call.call_control_id,
-        payload: phrase_text(slug, lang) || tenant.greeting_text || Setting.get("greeting_text"),
-        voice: "alice",
-        language: language_locale(lang))
-    end
+    slug  = phrase&.slug || tenant.greeting_variant
+    audio = greeting_audio_url_for(tenant, slug: slug, language: lang, voice: voice)
+    play_audio_or_speak(call, audio_url: audio,
+                        fallback_text: phrase_text(slug, lang) || tenant.greeting_text || Setting.get("greeting_text"),
+                        lang: lang)
   end
 
   # === Spam-response audio ===
@@ -399,14 +342,7 @@ class TelnyxController < ApplicationController
     voice  = tenant.greeting_voice  # forced Kokoro, bypasses pick_voice_for_call!
     audio  = audio_url_for_voice(slug: slug, voice: voice,
                                  tone: tenant.greeting_tone, language: lang)
-    if audio
-      cc_client.playback_start(call.call_control_id, audio_url: audio)
-    else
-      cc_client.speak(call.call_control_id,
-        payload: phrase_text(slug, lang) || "",
-        voice: "alice",
-        language: language_locale(lang))
-    end
+    play_audio_or_speak(call, audio_url: audio, fallback_text: phrase_text(slug, lang) || "", lang: lang)
   end
 
   def play_troll_segment(call)
@@ -499,16 +435,6 @@ class TelnyxController < ApplicationController
     (count.to_f / 5).clamp(0.5, 1.0)
   end
 
-  def spam_global_reason(external)
-    meta   = external.spam_metadata || {}
-    src    = meta["source"].to_s.presence
-    count  = meta["report_count"].to_i
-    parts  = [ "Global spam DB hit" ]
-    parts << "source: #{src}" if src
-    parts << "reports: #{count}" if count > 0
-    parts.join(" — ")
-  end
-
   # Picks the voice to use for every audio segment of this call's
   # lifetime (greeting + goodbye + voicemail prompt). Advances the
   # rotation cursor at most once per call by caching the picked voice
@@ -558,35 +484,27 @@ class TelnyxController < ApplicationController
     lang.to_s == "it" ? "it-IT" : "en-US"
   end
 
+  # Per-tenant silence cutoff for the screening recording. The tenant's
+  # screening_speech_timeout column was previously inert (the call flow
+  # hardcoded the constant); now it's honoured. Value is "auto"/blank (→
+  # default) or an integer 1..60 (validated on the Tenant model).
+  def screening_silence_timeout(tenant)
+    raw = tenant.screening_speech_timeout.to_s.strip
+    return SCREENING_SILENCE_TIMEOUT_SECS if raw.blank? || raw == "auto"
+    (Integer(raw, exception: false) || SCREENING_SILENCE_TIMEOUT_SECS).clamp(1, 60)
+  end
+
   def start_voicemail(call)
     # Used by the legacy whitelisted-voicemail path (no screening).
     tenant = call.tenant
     lang  = caller_language(call)
     voice = pick_voice_for_call!(call)
     audio = greeting_audio_url_for(tenant, slug: "voicemail_prompt", language: lang, voice: voice)
-    if audio
-      cc_client.playback_start(call.call_control_id, audio_url: audio)
-    else
-      cc_client.speak(call.call_control_id,
-        payload: phrase_text("voicemail_prompt", lang),
-        voice: "alice", language: language_locale(lang))
-    end
+    play_audio_or_speak(call, audio_url: audio, fallback_text: phrase_text("voicemail_prompt", lang), lang: lang)
     cc_client.record_start(call.call_control_id,
       max_length: tenant.max_recording_seconds || 120,
       play_beep: true)
     call.update!(flow_state: "recording", status: :recording)
-  end
-
-  # === Abuse defenses ===
-
-  def rate_limit_exceeded?(contact, tenant:, external:)
-    # Whitelisted contacts (operator override) and railsdav-allowed
-    # contacts are exempt — they're known-good callers.
-    return false if contact.whitelisted?
-    return false if external.matched? && external.policy == "allow"
-    limit = (tenant.max_calls_per_caller_per_day || 10).to_i
-    return false if limit <= 0
-    contact.recent_calls_count(within: 15.minutes) > limit
   end
 
   def forward_or_record(call, tenant)
@@ -673,8 +591,19 @@ class TelnyxController < ApplicationController
       return nil unless Setting::ALLOWED_VOICES.include?(effective_voice)
     end
 
+    # Degrade to TTS (return nil) rather than letting path_for raise on a blank/
+    # unsafe component — e.g. a tenant with a blank greeting_tone reaching this
+    # via play_spam_response_audio. Keeps a dropped/blank value off the hot path.
+    return nil unless [ slug, effective_voice, effective_tone ].all? { |c| GreetingsStorage.safe_component?(c) }
     return nil unless GreetingsStorage.path_for(slug, effective_voice, effective_tone).exist?
-    "#{ENV.fetch('APP_DOMAIN', 'https://phone.example.com')}/greetings/#{slug}/#{effective_voice}/#{effective_tone}.wav"
+    url = "#{ENV.fetch('APP_DOMAIN', 'https://phone.example.com')}/greetings/#{slug}/#{effective_voice}/#{effective_tone}.wav"
+    # Cloned-voice greetings are served only with a valid signature so the
+    # operator's voice WAVs aren't publicly harvestable (see GreetingSignature).
+    if effective_voice.start_with?("_t")
+      sig = GreetingSignature.encode(slug: slug, voice: effective_voice, tone: effective_tone)
+      url = "#{url}?sig=#{CGI.escape(sig)}"
+    end
+    url
   end
 
   def cc_client

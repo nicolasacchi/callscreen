@@ -20,7 +20,7 @@
     <dd><span class="badge badge-<%= @call.status %>"><%= @call.status %></span></dd>
 
     <dt>Time</dt>
-    <dd><%= @call.created_at.in_time_zone("Europe/Rome").strftime("%H:%M:%S %d/%m/%Y") %></dd>
+    <dd><%= @call.created_at.in_time_zone(tenant_time_zone).strftime("%H:%M:%S %d/%m/%Y") %></dd>
 
     <dt>Duration</dt>
     <dd><%= @call.duration_seconds ? "#{@call.duration_seconds}s" : "-" %></dd>

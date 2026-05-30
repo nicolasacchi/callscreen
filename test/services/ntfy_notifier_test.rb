@@ -14,6 +14,21 @@ class NtfyNotifierTest < ActiveSupport::TestCase
     ENV["NTFY_URL"] = @url
   end
 
+  test "tenant ntfy_url 'disabled' suppresses the push even when ENV fallback is set" do
+    # The e2e tenant relies on this so test runs never push to the operator's
+    # real phone; a regression here would silently spam them (TEST-4).
+    NtfyNotifier.notify(title: "x", message: "y", url: "disabled")
+    assert_not_requested :post, /./
+  end
+
+  test "per-tenant url overrides the ENV fallback" do
+    tenant_url = "https://ntfy.example.test/tenant-specific"
+    tenant_stub = stub_request(:post, tenant_url).to_return(status: 200)
+    NtfyNotifier.notify(title: "x", message: "y", url: tenant_url)
+    assert_requested tenant_stub
+    assert_not_requested :post, @url # not the ENV default
+  end
+
   test "successful POST resets failure counter" do
     NtfyNotifier.consecutive_failures = 5
     stub_request(:post, @url).to_return(status: 200)

@@ -70,4 +70,15 @@ class NotifyJobTest < ActiveJob::TestCase
 
     assert_not_requested :post, @ntfy_url
   end
+
+  test "duplicate enqueues push exactly once (atomic notified_at claim)" do
+    call = calls(:spam_completed)
+    call.update!(notified_at: nil)
+
+    NotifyJob.new.perform(call.id)
+    NotifyJob.new.perform(call.id)
+
+    # Second run loses the claim (notified_at already set) and sends nothing.
+    assert_requested :post, @ntfy_url, times: 1
+  end
 end

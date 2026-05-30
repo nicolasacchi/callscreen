@@ -13,7 +13,7 @@
     <dt>Total Calls</dt>
     <dd><%= @contact.calls_count %></dd>
     <dt>Last Called</dt>
-    <dd><%= @contact.last_called_at&.in_time_zone("Europe/Rome")&.strftime("%H:%M %d/%m/%Y") || "-" %></dd>
+    <dd><%= @contact.last_called_at&.in_time_zone(tenant_time_zone)&.strftime("%H:%M %d/%m/%Y") || "-" %></dd>
     <dt>Notes</dt>
     <dd><%= @contact.notes || "-" %></dd>
   </dl>
@@ -39,7 +39,7 @@
     <tbody>
       <% @calls.each do |call| %>
         <tr>
-          <td><%= link_to call.created_at.in_time_zone("Europe/Rome").strftime("%H:%M %d/%m"), admin_call_path(call) %></td>
+          <td><%= link_to call.created_at.in_time_zone(tenant_time_zone).strftime("%H:%M %d/%m"), admin_call_path(call) %></td>
           <td><span class="badge badge-<%= call.status %>"><%= call.status %></span></td>
           <td class="truncate"><%= truncate(call.screening_transcript, length: 80) %></td>
           <td><%= call.duration_seconds ? "#{call.duration_seconds}s" : "-" %></td>

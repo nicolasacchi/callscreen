@@ -1,4 +1,6 @@
 class Tenant < ApplicationRecord
+  include RotatingCursor
+
   self.table_name = "tenants"
 
   devise :database_authenticatable, :rememberable, :validatable,
@@ -15,7 +17,7 @@ class Tenant < ApplicationRecord
   has_many :tenant_phrases, dependent: :destroy
   has_many :default_pool_phrases, through: :tenant_phrases, source: :phrase
 
-  ALLOWED_VOICES    = %w[if_sara im_nicola af_heart am_michael cb_it cb_en alice man woman].freeze
+  ALLOWED_VOICES    = GreetingCatalog::ALLOWED_VOICES
   SPAM_RESPONSE_MODES = %w[silent polite_disclose time_waster].freeze
   USERNAME_FORMAT   = /\A[a-z0-9._-]+\z/i
   E164_FORMAT       = /\A\+?[0-9]{6,15}\z/
@@ -42,6 +44,7 @@ class Tenant < ApplicationRecord
 
   validates :greeting_voice,    inclusion: { in: ALLOWED_VOICES }, allow_blank: true
   validates :greeting_language, format: { with: /\A[a-z]{2}-[A-Z]{2}\z/, allow_blank: true }
+  validate  :voice_rotation_voices_known
   validate  :greeting_variant_in_catalog
   validate  :greeting_tone_in_catalog
 
@@ -105,22 +108,10 @@ class Tenant < ApplicationRecord
     voice_rotation_enabled? && voice_rotation_voice_list.any?
   end
 
-  # Atomically pick the next voice from the rotation list and advance
-  # the index. Modulo by the list size keeps the index small. Uses an
-  # UPDATE … RETURNING-style atomic increment via with_lock to avoid
-  # race conditions when two webhooks arrive concurrently.
+  # Atomically pick the next voice from the rotation list and advance the
+  # cursor (see RotatingCursor).
   def next_rotated_voice!
-    list = voice_rotation_voice_list
-    return nil if list.empty?
-
-    voice = nil
-    with_lock do
-      idx   = voice_rotation_index || 0
-      voice = list[idx % list.size]
-      next_idx = (idx + 1) % (list.size * 1_000)
-      update_column(:voice_rotation_index, next_idx)
-    end
-    voice
+    advance_rotation!(voice_rotation_voice_list, column: :voice_rotation_index)
   end
 
   def phrase_rotation_variant_list
@@ -132,20 +123,28 @@ class Tenant < ApplicationRecord
   end
 
   def next_rotated_variant!
-    list = phrase_rotation_variant_list
-    return nil if list.empty?
-
-    slug = nil
-    with_lock do
-      idx  = phrase_rotation_index || 0
-      slug = list[idx % list.size]
-      next_idx = (idx + 1) % (list.size * 1_000)
-      update_column(:phrase_rotation_index, next_idx)
-    end
-    slug
+    advance_rotation!(phrase_rotation_variant_list, column: :phrase_rotation_index)
   end
 
   private
+
+  # voice_rotation_voices is a free-text comma-separated column edited from
+  # the profile/tenant forms. Every entry must be a known Kokoro/Chatterbox
+  # voice or this tenant's own cloned-voice dir (_t<own id>). This blocks a
+  # tenant from injecting a path-traversal component (e.g. "../../etc") that
+  # would flow into GreetingsStorage.path_for, and from referencing another
+  # tenant's cloned voice (_t<other id>).
+  CLONED_VOICE_FORMAT = /\A_t\d+\z/
+
+  def voice_rotation_voices_known
+    return if voice_rotation_voices.blank?
+    own_clone = cloned_voice_dir if persisted?
+    bad = voice_rotation_voice_list.reject do |v|
+      ALLOWED_VOICES.include?(v) || (v.match?(CLONED_VOICE_FORMAT) && v == own_clone)
+    end
+    return if bad.empty?
+    errors.add(:voice_rotation_voices, "contains unknown or non-owned voices: #{bad.join(', ')}")
+  end
 
   def voice_clone_active_requires_consent_and_sample
     return unless voice_clone_active?

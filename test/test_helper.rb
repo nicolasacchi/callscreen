@@ -1,3 +1,16 @@
+# Opt-in line/branch coverage: `COVERAGE=1 bin/rails test`. Must load before any
+# application code. Gated so normal/CI runs aren't slowed; a coverage floor can
+# be added once a baseline is established (TEST-6).
+if ENV["COVERAGE"]
+  require "simplecov"
+  SimpleCov.start "rails" do
+    enable_coverage :branch
+    add_filter "/test/"
+    add_filter "/config/"
+    add_filter "/db/"
+  end
+end
+
 ENV["RAILS_ENV"] ||= "test"
 ENV["WEBHOOK_TOKEN"] ||= "test-webhook-token"
 # Keep token-fallback enabled in tests so existing webhook tests using ?token=

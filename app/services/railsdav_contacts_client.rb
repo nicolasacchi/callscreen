@@ -11,6 +11,11 @@ class RailsdavContactsClient
   ALLOWED_POLICIES = %w[screen allow block].freeze
   MAX_STRING_LEN = 200
   SPAM_METADATA_KEYS = %w[first_reported_at source report_count].freeze
+  # This lookup sits on the synchronous webhook hot path, in front of
+  # cc_client.answer, holding one of only ~3 Puma threads. A tight timeout
+  # bounds tail latency if railsdav is slow; the result degrades gracefully to
+  # MISS (the local whitelist already covers the allow fast-path) (PERF-1).
+  LOOKUP_TIMEOUT_SECS = Float(ENV.fetch("RAILSDAV_LOOKUP_TIMEOUT", "1.5"))
 
   def self.lookup(phone, username: nil)
     new(phone, username: username).lookup
@@ -39,7 +44,7 @@ class RailsdavContactsClient
         "Accept" => "application/json",
         "X-Request-ID" => Current.request_id.to_s
       },
-      timeout: 3
+      timeout: LOOKUP_TIMEOUT_SECS
     )
 
     return MISS unless response.success?

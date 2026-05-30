@@ -13,8 +13,8 @@
       <% @tags.each do |tag| %>
         <tr>
           <td><strong><%= tag.name %></strong></td>
-          <td><%= tag.phrases.count %></td>
-          <td><%= tag.contacts.count %></td>
+          <td><%= @phrase_counts[tag.id].to_i %></td>
+          <td><%= @contact_counts[tag.id].to_i %></td>
           <td>
             <%= button_to "Delete", admin_tag_path(tag), method: :delete,
                           class: "btn btn-danger btn-sm",

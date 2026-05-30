@@ -91,14 +91,8 @@ class GreetingCatalogTest < ActiveSupport::TestCase
                  GreetingCatalog::ALL_SLUGS.size
   end
 
-  test "language_for_number maps +39 → it and everything else → en" do
-    assert_equal "it", GreetingCatalog.language_for_number("+393990000001")
-    assert_equal "it", GreetingCatalog.language_for_number("+39059")
-    assert_equal "en", GreetingCatalog.language_for_number("+14155551234")
-    assert_equal "en", GreetingCatalog.language_for_number("+447700900123")
-    assert_equal "en", GreetingCatalog.language_for_number("")
-    assert_equal "en", GreetingCatalog.language_for_number(nil)
-  end
+  # (E.164 → language mapping is covered by LanguageResolverTest.from_e164;
+  # the duplicate GreetingCatalog.language_for_number was removed in P2.)
 
   test "voice_for_language swaps Italian voice to English equivalent and vice versa" do
     assert_equal "if_sara",    GreetingCatalog.voice_for_language("if_sara",    "it")

@@ -181,4 +181,33 @@ class TenantTest < ActiveSupport::TestCase
     t.update!(voice_clone_rendered_at: Time.current)
     assert t.voice_clone_ready?
   end
+
+  test "voice_rotation_voices accepts known voices and the tenant's own clone dir" do
+    @default.voice_rotation_voices = "if_sara,im_nicola,#{@default.cloned_voice_dir}"
+    assert @default.valid?, @default.errors.full_messages.to_sentence
+  end
+
+  test "voice_rotation_voices rejects an unknown voice (path-traversal guard)" do
+    @default.voice_rotation_voices = "im_nicola,../../etc/cron.d/x"
+    refute @default.valid?
+    assert_includes @default.errors[:voice_rotation_voices].to_sentence, "../../etc/cron.d/x"
+  end
+
+  test "voice_rotation_voices rejects another tenant's clone dir" do
+    @default.voice_rotation_voices = "im_nicola,_t#{@other.id}"
+    refute @default.valid?
+    assert_includes @default.errors[:voice_rotation_voices].to_sentence, "_t#{@other.id}"
+  end
+
+  test "voice_rotation_voices may be blank" do
+    @default.voice_rotation_voices = ""
+    assert @default.valid?, @default.errors.full_messages.to_sentence
+  end
+
+  test "auto_blacklist_threshold rejects 0 but allows nil (nil is the off switch)" do
+    @default.auto_blacklist_threshold = 0
+    refute @default.valid?, "0 must be rejected (use nil to disable)"
+    @default.auto_blacklist_threshold = nil
+    assert @default.valid?, @default.errors.full_messages.to_sentence
+  end
 end

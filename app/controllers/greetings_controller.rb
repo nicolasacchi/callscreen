@@ -18,12 +18,27 @@ class GreetingsController < ApplicationController
     # tenant-authored phrase is valid. The format regex above still
     # blocks path traversal — this exists?-call only checks identity.
     return head :not_found unless Phrase.exists?(slug: slug)
-    return head :not_found unless Setting::ALLOWED_VOICES.include?(voice)
-    return head :not_found unless GreetingCatalog::TONE_SLUGS.include?(tone)
+    return head :not_found unless valid_voice_and_tone?(slug, voice, tone)
 
     path = GreetingsStorage.path_for(slug, voice, tone)
     return head :not_found unless path.exist?
 
     send_file path, type: "audio/wav", disposition: :inline
+  end
+
+  private
+
+  # Cloned-voice greetings (_t<id>) are served only with a valid signature (see
+  # GreetingSignature); catalog voices stay public. The tone may carry an `_en`
+  # suffix for cloned English audio, so validate against the base tone.
+  def valid_voice_and_tone?(slug, voice, tone)
+    base_tone = tone.sub(/_en\z/, "")
+    return false unless GreetingCatalog::TONE_SLUGS.include?(base_tone)
+
+    if voice.match?(/\A_t\d+\z/)
+      GreetingSignature.valid?(params[:sig], slug: slug, voice: voice, tone: tone)
+    else
+      Setting::ALLOWED_VOICES.include?(voice)
+    end
   end
 end
