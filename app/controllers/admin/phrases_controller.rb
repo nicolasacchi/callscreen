@@ -6,9 +6,9 @@ module Admin
     before_action :load_phrase, only: [ :edit, :update, :destroy, :show, :rerender ]
 
     def index
-      shared = Phrase.where(tenant_id: nil)
-      own    = Phrase.where(tenant_id: viewing_tenant.id)
-      scope  = Phrase.where(id: shared.pluck(:id) + own.pluck(:id))
+      # Shared (tenant_id: nil) + own rows, as one indexed predicate — reuses
+      # the existing scope instead of plucking ids into an IN list (PERF-4).
+      scope  = Phrase.visible_to(viewing_tenant)
       scope  = scope.where(time_of_day: params[:tod])      if params[:tod].present?
       scope  = scope.where(day_of_week: params[:dow])      if params[:dow].present?
       scope  = scope.where(render_status: params[:status]) if params[:status].present?
