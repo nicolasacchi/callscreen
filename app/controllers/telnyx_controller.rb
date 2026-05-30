@@ -249,37 +249,32 @@ class TelnyxController < ApplicationController
     call = Call.find_by(call_control_id: ccid)
     return unless call
 
-    # Idempotent: Telnyx fires recording.saved twice (one for the
-    # action callback, one for the recordingStatusCallback). First
-    # webhook wins; the rest are no-ops.
-    return if call.recording_url.present?
+    attrs = { recording_url: url, duration_seconds: p["duration_seconds"].to_i }
 
-    call.update!(
-      recording_url: url,
-      duration_seconds: p["duration_seconds"].to_i
-    )
-
-    case call.flow_state
-    when "screening_recording"
-      # Caller is still on the line — close their leg promptly so they
-      # don't hear ~30 seconds of silence while Whisper + the LLM run.
-      # Play a short "thanks, goodbye" and hangup on speak.ended (existing
-      # hanging_up_after_speak branch). Classification continues async in
-      # ScreeningJob, which writes status/transcript/ai_classification
-      # without touching flow_state.
-      call.update!(flow_state: "hanging_up_after_speak")
+    # Idempotent + race-safe. Telnyx fires recording.saved twice (the action
+    # callback and the recordingStatusCallback). We claim the work with an
+    # atomic flow_state transition, so only the first delivery proceeds — even
+    # if two arrive concurrently, or the first carries no recording_url.
+    # (Keying the dedupe on flow_state instead of recording_url avoids the
+    # double-goodbye / double-ScreeningJob a nil first URL previously risked.)
+    if Call.where(id: call.id, flow_state: "screening_recording")
+           .update_all(attrs.merge(flow_state: "hanging_up_after_speak")).positive?
+      # Caller is still on the line — close their leg promptly so they don't
+      # hear ~30 s of silence while Whisper + the LLM run. Play a short
+      # goodbye and hang up on speak.ended (hanging_up_after_speak branch).
+      # Classification continues async in ScreeningJob.
+      call.reload
       play_goodbye(call, phrase: "goodbye_spam")
       ScreeningJob.perform_later(call.id)
-    when "recording"
-      # Legacy whitelisted-voicemail path (greeting + record without
-      # screening, used when an allow-listed caller has no
-      # forward_back_number set). Just transcribe + notify.
-      call.update!(status: :completed, flow_state: "done")
+    elsif Call.where(id: call.id, flow_state: "recording")
+              .update_all(attrs.merge(status: Call.statuses[:completed], flow_state: "done")).positive?
+      # Legacy whitelisted-voicemail path (greeting + record, no screening).
       TranscribeRecordingJob.perform_later(call.id)
       cc_client.hangup(ccid)
     else
-      Rails.logger.info("recording.saved in unexpected flow_state=#{call.flow_state}")
-      cc_client.hangup(ccid)
+      # Already advanced past the recording states — a duplicate or stale
+      # delivery. Don't re-hang up; the original leg is already being handled.
+      Rails.logger.info("recording.saved in non-recording flow_state=#{call.flow_state}; ignoring")
     end
   end
 

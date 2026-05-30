@@ -8,7 +8,12 @@ class NotifyJob < ApplicationJob
 
   def perform(call_id)
     call = Call.find(call_id)
-    return if call.notified_at.present?
+    # Atomic claim: exactly one concurrent NotifyJob for this call wins, so a
+    # call can't be pushed twice (e.g. apply_spam_response enqueues one and a
+    # later ScreeningJob#finalize enqueues another, racing across the 3
+    # :default threads). notified_at is the claim token. NtfyNotifier never
+    # raises, so claiming before sending preserves the prior semantics.
+    return if Call.where(id: call.id, notified_at: nil).update_all(notified_at: Time.current).zero?
 
     tenant = call.tenant
     ntfy_url      = tenant&.ntfy_url
@@ -50,8 +55,6 @@ class NotifyJob < ApplicationJob
         call: call
       )
     end
-
-    call.update!(notified_at: Time.current)
   end
 
   private
