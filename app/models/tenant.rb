@@ -1,4 +1,6 @@
 class Tenant < ApplicationRecord
+  include RotatingCursor
+
   self.table_name = "tenants"
 
   devise :database_authenticatable, :rememberable, :validatable,
@@ -106,22 +108,10 @@ class Tenant < ApplicationRecord
     voice_rotation_enabled? && voice_rotation_voice_list.any?
   end
 
-  # Atomically pick the next voice from the rotation list and advance
-  # the index. Modulo by the list size keeps the index small. Uses an
-  # UPDATE … RETURNING-style atomic increment via with_lock to avoid
-  # race conditions when two webhooks arrive concurrently.
+  # Atomically pick the next voice from the rotation list and advance the
+  # cursor (see RotatingCursor).
   def next_rotated_voice!
-    list = voice_rotation_voice_list
-    return nil if list.empty?
-
-    voice = nil
-    with_lock do
-      idx   = voice_rotation_index || 0
-      voice = list[idx % list.size]
-      next_idx = (idx + 1) % (list.size * 1_000)
-      update_column(:voice_rotation_index, next_idx)
-    end
-    voice
+    advance_rotation!(voice_rotation_voice_list, column: :voice_rotation_index)
   end
 
   def phrase_rotation_variant_list
@@ -133,17 +123,7 @@ class Tenant < ApplicationRecord
   end
 
   def next_rotated_variant!
-    list = phrase_rotation_variant_list
-    return nil if list.empty?
-
-    slug = nil
-    with_lock do
-      idx  = phrase_rotation_index || 0
-      slug = list[idx % list.size]
-      next_idx = (idx + 1) % (list.size * 1_000)
-      update_column(:phrase_rotation_index, next_idx)
-    end
-    slug
+    advance_rotation!(phrase_rotation_variant_list, column: :phrase_rotation_index)
   end
 
   private
