@@ -3,7 +3,9 @@
 <% if super_admin? %>
   <div class="toolbar">
     <%= form_tag admin_recordings_path, method: :get, style: "display: flex; gap: 0.5rem; align-items: center;" do %>
-      <select name="tenant_id" onchange="this.form.submit()">
+      <%# aria-label so the unlabelled select is announced; the submit button
+          is a no-JS / CSP-safe fallback for the onchange auto-submit (A11Y-3). %>
+      <select name="tenant_id" aria-label="Filter recordings by tenant" onchange="this.form.submit()">
         <option value="">My recordings (<%= current_tenant.display_name %>)</option>
         <% Tenant.order(:name).each do |t| %>
           <option value="<%= t.id %>" <%= "selected" if params[:tenant_id].to_s == t.id.to_s %>>
@@ -11,6 +13,7 @@
           </option>
         <% end %>
       </select>
+      <%= submit_tag "Filter", class: "btn btn-sm" %>
     <% end %>
   </div>
 <% end %>

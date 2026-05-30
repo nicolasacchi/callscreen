@@ -85,7 +85,8 @@
       width: 100%; padding: 0.5rem 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 0.875rem;
     }
     .form-group textarea { min-height: 80px; resize: vertical; }
-    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--primary); }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--primary); }
+    .form-group input:focus-visible, .form-group select:focus-visible, .form-group textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
     .form-check { display: flex; align-items: center; gap: 0.5rem; }
     .form-check input[type="checkbox"] { width: auto; }
 

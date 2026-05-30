@@ -1,10 +1,4 @@
 operator_email = ENV.fetch("ADMIN_EMAIL", "admin@callscreen.local")
-operator_password = ENV.fetch("ADMIN_PASSWORD") do
-  if Rails.env.production?
-    raise "ADMIN_PASSWORD environment variable is required in production"
-  end
-  "changeme123!"
-end
 
 # The single bootstrap tenant is the operator: super-admin + default tenant
 # (used for fallback when an inbound call cannot be attributed to any other
@@ -12,13 +6,25 @@ end
 operator_slug = operator_email.split("@").first.downcase.gsub(/[^a-z0-9._-]/, "-")
 
 operator = Tenant.find_or_initialize_by(email: operator_email)
-operator.password              ||= operator_password
-operator.password_confirmation ||= operator_password
-operator.slug                  ||= operator_slug
-operator.name                  ||= operator_slug
-operator.default_tenant          = true
-operator.admin                   = true
-operator.active                  = true
+
+# Set the password ONLY when first creating the operator. db:seed runs on every
+# container boot, and the old `operator.password ||= ENV[...]` reset the
+# operator's password to ADMIN_PASSWORD on every deploy (password is a Devise
+# virtual attr that always reads back nil). ADMIN_PASSWORD is therefore required
+# only to seed a NEW operator — an existing operator's password is never touched.
+if operator.new_record?
+  password = ENV.fetch("ADMIN_PASSWORD") do
+    raise "ADMIN_PASSWORD is required to seed the initial operator" if Rails.env.production?
+    "changeme123!"
+  end
+  operator.password = password
+  operator.password_confirmation = password
+end
+operator.slug          ||= operator_slug
+operator.name          ||= operator_slug
+operator.default_tenant  = true
+operator.admin           = true
+operator.active          = true
 operator.save!
 
 Setting::DEFAULTS.each do |key, value|
