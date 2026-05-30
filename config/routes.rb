@@ -1,5 +1,8 @@
 Rails.application.routes.draw do
-  get "up" => "rails/health#show", as: :rails_health_check
+  # DB-aware health probe (verifies primary + queue connectivity, not just
+  # that the process renders). production.rb excludes "/up" from force_ssl /
+  # host_authorization / healthcheck-log-silencing, so keep the path.
+  get "up" => "health#show", as: :rails_health_check
 
   # Telnyx TeXML webhooks (token auth, no CSRF). Phase 4 of the multi-tenant
   # migration replaces these with a single /telnyx/webhook for Voice API.
