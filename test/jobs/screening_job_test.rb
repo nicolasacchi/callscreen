@@ -205,6 +205,25 @@ class ScreeningJobTest < ActiveJob::TestCase
     refute @contact.reload.blacklisted
   end
 
+  test "auto-blacklist: nil threshold disables it regardless of spam count" do
+    # CLAUDE.md documents nil as the off switch (the validator forbids 0).
+    @tenant.update!(auto_blacklist_threshold: nil)
+    4.times do |i|
+      @tenant.calls.create!(
+        call_sid: "abl-nil-#{i}", call_control_id: "abl-nil-#{i}",
+        from_number: CALLER_FROM, contact: @contact, status: :spam,
+        created_at: (i + 1).hours.ago
+      )
+    end
+    stub_whisper("buy now special offer")
+    stub_moonshot("spam", 0.99, "telemarketing")
+
+    assert_no_difference -> { AuditLog.where(action: "auto_blacklist").count } do
+      ScreeningJob.new.perform(@call.id)
+    end
+    refute @contact.reload.blacklisted
+  end
+
   test "auto-blacklist: ignores spam outside the window" do
     3.times do |i|
       @tenant.calls.create!(

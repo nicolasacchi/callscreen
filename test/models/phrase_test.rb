@@ -80,7 +80,7 @@ class PhraseTest < ActiveSupport::TestCase
     other = tenants(:other)
     visible_to_other = Phrase.visible_to(other).pluck(:slug)
     refute_includes visible_to_other, "own_only"
-    assert_includes  visible_to_other, "informal_tu"
+    assert_includes visible_to_other, "informal_tu"
   end
 
   test "text(lang) falls back when target language is missing" do

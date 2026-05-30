@@ -39,3 +39,6 @@
 # Local Python venv used by scripts/render_greetings.py
 /.venv
 
+
+# SimpleCov output
+/coverage

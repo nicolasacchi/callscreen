@@ -203,4 +203,11 @@ class TenantTest < ActiveSupport::TestCase
     @default.voice_rotation_voices = ""
     assert @default.valid?, @default.errors.full_messages.to_sentence
   end
+
+  test "auto_blacklist_threshold rejects 0 but allows nil (nil is the off switch)" do
+    @default.auto_blacklist_threshold = 0
+    refute @default.valid?, "0 must be rejected (use nil to disable)"
+    @default.auto_blacklist_threshold = nil
+    assert @default.valid?, @default.errors.full_messages.to_sentence
+  end
 end

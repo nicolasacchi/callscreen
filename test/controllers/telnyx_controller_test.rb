@@ -953,6 +953,36 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_equal "screening_recording", Call.find_by!(call_control_id: CCID).flow_state
   end
 
+  # === Malformed / partial payloads degrade gracefully (TEST-5) ===
+
+  test "valid JSON without a data envelope is acknowledged (200) and creates nothing" do
+    assert_no_difference -> { Call.count } do
+      post_event({ "foo" => "bar" })
+    end
+    assert_response :success
+  end
+
+  test "call.initiated with missing from/to does not create a Call and still 200s" do
+    assert_no_difference -> { Call.count } do
+      post_event event_envelope("call.initiated", { "call_control_id" => "v3:malformed-init" })
+    end
+    assert_response :success
+    assert_nil Call.find_by(call_control_id: "v3:malformed-init")
+  end
+
+  test "recording.saved for an unknown call is a no-op 200" do
+    post_event event_envelope("call.recording.saved", { "call_control_id" => "v3:unknown-rec" })
+    assert_response :success
+  end
+
+  test "unparseable body reaching the controller is acknowledged (200), not a 500" do
+    # Content-Type text/plain so Rails' own JSON middleware doesn't 400 it
+    # first; this exercises the controller's request_payload JSON.parse rescue.
+    post telnyx_voice_url(token: @token), params: "<<not json>>",
+         headers: { "Content-Type" => "text/plain" }
+    assert_response :success
+  end
+
   private
 
   def seed_call(flow_state:, contact: nil, screening_transcript: nil, status: :screening,
