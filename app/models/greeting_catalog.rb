@@ -274,11 +274,6 @@ class GreetingCatalog
   def self.tone_speed(slug)
     TONES.dig(slug.to_s, :speed) || 1.0
   end
-
-  # Maps an E.164 caller number to a language code. Italian dialing prefix
-  # → Italian; anything else → English. Used by the controller to pick
-  # the right greeting + voice + Whisper language.
-  def self.language_for_number(from_number)
-    from_number.to_s.start_with?("+39") ? "it" : "en"
-  end
+  # NB: E.164 → language mapping lives in LanguageResolver.from_e164 (single
+  # home); the duplicate GreetingCatalog.language_for_number was removed.
 end

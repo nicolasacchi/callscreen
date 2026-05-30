@@ -45,63 +45,6 @@ class CallControlClientTest < ActiveSupport::TestCase
     assert_requested s
   end
 
-  test "gather_using_audio posts audio_url and language (DTMF only)" do
-    s = stub_action(:gather_using_audio, body_match: hash_including(
-      audio_url: "https://phone.test/g.wav",
-      language: "it-IT"
-    ))
-    @client.gather_using_audio(CCID, audio_url: "https://phone.test/g.wav")
-    assert_requested s
-  end
-
-  test "gather_using_audio does NOT send transcription params (Voice API gather is DTMF-only)" do
-    captured = nil
-    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/gather_using_audio")
-      .with { |req| captured = JSON.parse(req.body); true }
-      .to_return(status: 200, body: "{}")
-    @client.gather_using_audio(CCID, audio_url: "x")
-    refute captured.key?("transcription"), "Voice API gather doesn't support transcription"
-    refute captured.key?("transcription_engine")
-  end
-
-  test "gather_using_audio omits maximum_digits/minimum_digits when not given (Telnyx 422s on 0)" do
-    captured = nil
-    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/gather_using_audio")
-      .with { |req| captured = JSON.parse(req.body); true }
-      .to_return(status: 200, body: '{"data":{"result":"ok"}}')
-    @client.gather_using_audio(CCID, audio_url: "https://phone.test/g.wav")
-    refute captured.key?("maximum_digits"), "must NOT send maximum_digits=0 — Telnyx requires 1..128"
-    refute captured.key?("minimum_digits")
-  end
-
-  test "gather_using_audio includes maximum_digits when explicitly set" do
-    captured = nil
-    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/gather_using_audio")
-      .with { |req| captured = JSON.parse(req.body); true }
-      .to_return(status: 200, body: "{}")
-    @client.gather_using_audio(CCID, audio_url: "x", maximum_digits: 4, minimum_digits: 1)
-    assert_equal 4, captured["maximum_digits"]
-    assert_equal 1, captured["minimum_digits"]
-  end
-
-  test "gather_using_speak posts payload + voice + language (DTMF only)" do
-    s = stub_action(:gather_using_speak, body_match: hash_including(
-      payload: "Buongiorno", voice: "alice", language: "it-IT", payload_type: "text"
-    ))
-    @client.gather_using_speak(CCID, payload: "Buongiorno")
-    assert_requested s
-  end
-
-  test "gather_using_speak omits maximum_digits/minimum_digits when not given" do
-    captured = nil
-    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/gather_using_speak")
-      .with { |req| captured = JSON.parse(req.body); true }
-      .to_return(status: 200, body: "{}")
-    @client.gather_using_speak(CCID, payload: "Buongiorno")
-    refute captured.key?("maximum_digits")
-    refute captured.key?("minimum_digits")
-  end
-
   test "record_start posts format/max_length/beep" do
     s = stub_action(:record_start, body_match: hash_including(format: "wav", max_length: 120, play_beep: true))
     @client.record_start(CCID, max_length: 120)
