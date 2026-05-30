@@ -13,4 +13,12 @@ class Tag < ApplicationRecord
     return where(tenant_id: nil) unless tenant
     where("tenant_id IS NULL OR tenant_id = ?", tenant.id)
   }
+
+  # Assigns a comma-separated tag-name list to a record (Contact/Phrase),
+  # creating tenant-owned tags as needed. Single home for the parse + upsert
+  # logic the contacts/phrases controllers both used (CQ-6).
+  def self.assign_csv(record, names_csv, tenant:)
+    names = names_csv.to_s.split(",").map(&:strip).reject(&:empty?).uniq
+    record.tags = names.map { |n| find_or_create_by!(tenant: tenant, name: n) }
+  end
 end

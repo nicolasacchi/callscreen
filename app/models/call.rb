@@ -60,4 +60,13 @@ class Call < ApplicationRecord
   def total_cost_usd
     (telnyx_cost_usd || 0).to_f + (moonshot_cost_usd || 0).to_f
   end
+
+  # Per-row total-cost SQL expression (Telnyx + Moonshot, NULL-safe). Single
+  # home for the formula the costs dashboard aggregates (CQ-9); mirrors
+  # #total_cost_usd above.
+  TOTAL_COST_SQL = "COALESCE(telnyx_cost_usd, 0) + COALESCE(moonshot_cost_usd, 0)".freeze
+
+  def self.total_cost_sum_sql
+    Arel.sql("SUM(#{TOTAL_COST_SQL})")
+  end
 end

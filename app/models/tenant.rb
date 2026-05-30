@@ -15,7 +15,7 @@ class Tenant < ApplicationRecord
   has_many :tenant_phrases, dependent: :destroy
   has_many :default_pool_phrases, through: :tenant_phrases, source: :phrase
 
-  ALLOWED_VOICES    = %w[if_sara im_nicola af_heart am_michael cb_it cb_en alice man woman].freeze
+  ALLOWED_VOICES    = GreetingCatalog::ALLOWED_VOICES
   SPAM_RESPONSE_MODES = %w[silent polite_disclose time_waster].freeze
   USERNAME_FORMAT   = /\A[a-z0-9._-]+\z/i
   E164_FORMAT       = /\A\+?[0-9]{6,15}\z/

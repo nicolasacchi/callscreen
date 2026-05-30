@@ -209,6 +209,12 @@ class GreetingCatalog
 
   VOICE_SLUGS = VOICES.keys.freeze
 
+  # Single source of truth for "which voice ids are accepted" — the real
+  # Kokoro/Chatterbox voices plus the Telnyx built-in fallbacks (alice/man/
+  # woman). Tenant::ALLOWED_VOICES and Setting::ALLOWED_VOICES reference this so
+  # adding a voice is a one-line change (CQ-4).
+  ALLOWED_VOICES = (VOICE_SLUGS + %w[alice man woman]).freeze
+
   # Voice equivalents across languages. Used to auto-swap voice based on
   # the caller's language. Italian voices map to their English counterpart
   # of matching gender+tone; English voices map back to Italian similarly.

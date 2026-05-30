@@ -19,13 +19,13 @@ class DayOfWeekSlot
   # to be eligible for `day_or_date`.
   def self.eligible_values(day_or_date)
     sym = case day_or_date
-          when Symbol then day_or_date
-          when String then day_or_date.downcase.to_sym
-          when Date, Time, DateTime, ActiveSupport::TimeWithZone
+    when Symbol then day_or_date
+    when String then day_or_date.downcase.to_sym
+    when Date, Time, DateTime, ActiveSupport::TimeWithZone
             current(day_or_date)
-          else
+    else
             current
-          end
+    end
     base = [ "any", sym.to_s ]
     base << "weekday" if WEEKDAY_SET.include?(sym)
     base << "weekend" if WEEKEND_SET.include?(sym)

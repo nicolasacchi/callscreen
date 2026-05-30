@@ -51,14 +51,8 @@ module Admin
     private
 
     def audit(action_name, subject, metadata = {})
-      AuditLog.create!(
-        actor: current_tenant,
-        tenant: viewing_tenant,
-        action: action_name,
-        subject_type: subject.class.name,
-        subject_id: subject.id,
-        metadata: metadata
-      )
+      AuditLog.record(action: action_name, subject: subject,
+                      tenant: viewing_tenant, actor: current_tenant, **metadata)
     end
   end
 end

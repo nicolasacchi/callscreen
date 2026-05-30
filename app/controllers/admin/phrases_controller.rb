@@ -76,22 +76,12 @@ module Admin
 
     def assign_tags(phrase)
       return unless params.dig(:phrase, :tag_names)
-      names = params[:phrase][:tag_names].to_s.split(",").map(&:strip).reject(&:empty?).uniq
-      tags = names.map do |n|
-        Tag.find_or_create_by!(tenant: viewing_tenant, name: n)
-      end
-      phrase.tags = tags
+      Tag.assign_csv(phrase, params[:phrase][:tag_names], tenant: viewing_tenant)
     end
 
     def audit(action_name, subject, metadata = {})
-      AuditLog.create!(
-        actor:        current_tenant,
-        tenant:       viewing_tenant,
-        action:       action_name,
-        subject_type: subject.class.name,
-        subject_id:   subject.id,
-        metadata:     metadata
-      )
+      AuditLog.record(action: action_name, subject: subject,
+                      tenant: viewing_tenant, actor: current_tenant, **metadata)
     end
   end
 end

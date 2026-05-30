@@ -155,13 +155,10 @@ class ScreeningJob < ApplicationJob
     return if count < threshold.to_i
 
     contact.update!(blacklisted: true)
-    AuditLog.create!(
-      actor: nil, tenant: tenant, action: "auto_blacklist",
-      subject_type: "Contact", subject_id: contact.id,
-      metadata: {
-        from: call.from_number, spam_count: count,
-        window_days: window, threshold: threshold
-      }
+    AuditLog.record(
+      action: "auto_blacklist", subject: contact, tenant: tenant,
+      from: call.from_number, spam_count: count,
+      window_days: window, threshold: threshold.to_i
     )
   end
 end

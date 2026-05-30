@@ -66,11 +66,7 @@ module Admin
 
     def assign_tag_names(contact)
       return unless params.dig(:contact, :tag_names)
-      names = params[:contact][:tag_names].to_s.split(",").map(&:strip).reject(&:empty?).uniq
-      tags = names.map do |n|
-        Tag.find_or_create_by!(tenant: viewing_tenant, name: n)
-      end
-      contact.tags = tags
+      Tag.assign_csv(contact, params[:contact][:tag_names], tenant: viewing_tenant)
     end
   end
 end

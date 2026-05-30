@@ -69,13 +69,7 @@ class NtfyActionsController < ApplicationController
   end
 
   def audit!(call, action_name, **metadata)
-    AuditLog.create!(
-      actor: nil,
-      tenant: call.tenant,
-      action: action_name,
-      subject_type: call.class.name,
-      subject_id: call.id,
-      metadata: metadata.merge(source: "ntfy", from: call.from_number)
-    )
+    AuditLog.record(action: action_name, subject: call, tenant: call.tenant,
+                    **metadata, source: "ntfy", from: call.from_number)
   end
 end

@@ -137,7 +137,8 @@ class PhrasePoolResolver
     return nil if candidates.empty?
     return candidates.first unless owner
 
-    cursor_attr = owner.is_a?(Contact) ? :phrase_rotation_index : :phrase_rotation_index
+    # Both Contact and Tenant name the cursor column phrase_rotation_index.
+    cursor_attr = :phrase_rotation_index
     chosen = nil
     owner.with_lock do
       idx = owner.public_send(cursor_attr) || 0
