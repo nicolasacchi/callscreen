@@ -509,6 +509,19 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_equal "screening_recording", call.flow_state
   end
 
+  test "playback.ended honours the tenant's screening_speech_timeout setting" do
+    @tenant.update!(screening_speech_timeout: "7")
+    seed_call(flow_state: "screening_prompt_playing")
+    captured = nil
+    stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/record_start")
+      .with { |req| captured = JSON.parse(req.body); true }
+      .to_return(status: 200, body: '{"data":{"result":"ok"}}')
+
+    post_event event_envelope("call.playback.ended")
+
+    assert_equal 7, captured["timeout_secs"], "per-tenant speech timeout should drive silence detection"
+  end
+
   test "speak.ended in screening_prompt_playing also triggers record_start (TTS-greeting fallback)" do
     seed_call(flow_state: "screening_prompt_playing")
     record_stub = stub_action(CCID, :record_start)

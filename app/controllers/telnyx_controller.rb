@@ -21,7 +21,7 @@ class TelnyxController < ApplicationController
   #   call.initiated → answer
   #   call.answered → playback_start(greeting)         state=screening_prompt_playing
   #   call.playback.ended → record_start(max_length)   state=screening_recording
-  #   call.recording.saved → enqueue ScreeningJob      state=processing
+  #   call.recording.saved → goodbye + ScreeningJob    state=hanging_up_after_speak
   #   ScreeningJob → Whisper → SpamClassifier → finalize
   #   call.hangup → mark done
 
@@ -29,8 +29,12 @@ class TelnyxController < ApplicationController
   SCREENING_RECORDING_MAX_SECS = 30
   # Stop recording after this many seconds of silence. Lets a caller who
   # said "Sono Mario, chiamo per la cena" finish + pause + get hung up
-  # in ~8s instead of waiting the full max_length=30s timeout.
+  # in ~8s instead of waiting the full max_length=30s timeout. Default when
+  # the tenant's screening_speech_timeout is "auto"/blank.
   SCREENING_SILENCE_TIMEOUT_SECS = 3
+  # Per-caller burst window. NB: tenant.max_calls_per_caller_per_day is a
+  # historical misnomer — the cap is enforced over this short window, not 24h.
+  RATE_LIMIT_WINDOW = 15.minutes
 
   skip_before_action :verify_authenticity_token
   before_action :verify_telnyx_request
@@ -114,7 +118,7 @@ class TelnyxController < ApplicationController
     if rate_limit_exceeded?(contact, tenant: tenant, external: external)
       limit = tenant.max_calls_per_caller_per_day || 10
       apply_spam_response(call, tenant, ccid: ccid,
-                          reason: "Rate limited (more than #{limit} calls in 24h)",
+                          reason: "Rate limited (more than #{limit} calls in 15 min)",
                           source: "rate_limit",
                           force_silent: true)
       return
@@ -227,7 +231,7 @@ class TelnyxController < ApplicationController
         format: "wav",
         channels: "single",
         max_length: SCREENING_RECORDING_MAX_SECS,
-        timeout_secs: SCREENING_SILENCE_TIMEOUT_SECS,
+        timeout_secs: screening_silence_timeout(call.tenant),
         play_beep: false,
         trim: "trim-silence")
     when "hanging_up_after_speak"
@@ -553,6 +557,16 @@ class TelnyxController < ApplicationController
     lang.to_s == "it" ? "it-IT" : "en-US"
   end
 
+  # Per-tenant silence cutoff for the screening recording. The tenant's
+  # screening_speech_timeout column was previously inert (the call flow
+  # hardcoded the constant); now it's honoured. Value is "auto"/blank (→
+  # default) or an integer 1..60 (validated on the Tenant model).
+  def screening_silence_timeout(tenant)
+    raw = tenant.screening_speech_timeout.to_s.strip
+    return SCREENING_SILENCE_TIMEOUT_SECS if raw.blank? || raw == "auto"
+    (Integer(raw, exception: false) || SCREENING_SILENCE_TIMEOUT_SECS).clamp(1, 60)
+  end
+
   def start_voicemail(call)
     # Used by the legacy whitelisted-voicemail path (no screening).
     tenant = call.tenant
@@ -581,7 +595,7 @@ class TelnyxController < ApplicationController
     return false if external.matched? && external.policy == "allow"
     limit = (tenant.max_calls_per_caller_per_day || 10).to_i
     return false if limit <= 0
-    contact.recent_calls_count(within: 15.minutes) > limit
+    contact.recent_calls_count(within: RATE_LIMIT_WINDOW) > limit
   end
 
   def forward_or_record(call, tenant)

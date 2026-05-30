@@ -14,18 +14,17 @@ class Call < ApplicationRecord
     unknown: 8         # caller said nothing — no enough signal to classify
   }
 
+  # Leg-lifecycle states actually assigned by the Voice API dispatcher. The
+  # pre-Phase-4 TeXML states (processing, greeting_playing, awaiting_speech,
+  # classifying, clarification_*, voicemail_prompt_playing) were dead — never
+  # assigned anywhere — and were pruned (ARCH-2/CQ-1).
+  # NB: "recording" here is the FSM state for the legacy whitelisted-voicemail
+  # path; it's distinct from the `status` enum value of the same name.
   FLOW_STATES = %w[
     initiated
     answered
     screening_prompt_playing
     screening_recording
-    processing
-    greeting_playing
-    awaiting_speech
-    classifying
-    clarification_playing
-    clarification_awaiting_speech
-    voicemail_prompt_playing
     recording
     transfer_dialing
     hanging_up_after_speak
