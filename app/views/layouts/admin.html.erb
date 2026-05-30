@@ -165,8 +165,13 @@
       </div>
     </div>
     <div class="main">
-      <% if notice %><div class="flash notice"><%= notice %></div><% end %>
-      <% if alert %><div class="flash alert"><%= alert %></div><% end %>
+      <%# Render every flash key, not just notice/alert, so Devise lockout and
+          flash[:error]/:warning/:success messages aren't silently dropped (UI-3).
+          Unknown types map to the alert style. %>
+      <% flash.each do |type, message| %>
+        <% next if message.blank? %>
+        <div class="flash <%= type.to_s == "notice" ? "notice" : "alert" %>"><%= message %></div>
+      <% end %>
       <%= yield %>
     </div>
   </div>

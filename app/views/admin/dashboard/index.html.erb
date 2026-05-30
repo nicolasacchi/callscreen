@@ -57,7 +57,7 @@
   <tbody>
     <% @recent_calls.each do |call| %>
       <tr>
-        <td><%= link_to call.created_at.in_time_zone("Europe/Rome").strftime("%H:%M %d/%m"), admin_call_path(call) %></td>
+        <td><%= link_to call.created_at.in_time_zone(tenant_time_zone).strftime("%H:%M %d/%m"), admin_call_path(call) %></td>
         <td><%= call.contact_name %></td>
         <td><span class="badge badge-<%= call.status %>"><%= call.status %></span></td>
         <td class="truncate"><%= call.screening_transcript %></td>

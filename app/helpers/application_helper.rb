@@ -9,4 +9,17 @@ module ApplicationHelper
     return str unless digits.match?(/\A\+?[0-9]{6,15}\z/)
     link_to str, "tel:#{digits}", options
   end
+
+  # Per-tenant display timezone for admin views (I18N-2). Uses the tenant being
+  # viewed (super-admin cross-tenant pages) when available, else the logged-in
+  # tenant; falls back to Europe/Rome. Replaces the hardcoded "Europe/Rome"
+  # literal that showed wrong wall-clock times to tenants in other zones.
+  def tenant_time_zone
+    tz = if respond_to?(:viewing_tenant)
+      viewing_tenant&.time_zone
+    elsif respond_to?(:current_tenant)
+      current_tenant&.time_zone
+    end
+    tz.presence || "Europe/Rome"
+  end
 end

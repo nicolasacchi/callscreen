@@ -33,7 +33,7 @@
         <td><%= contact.whitelisted? ? "Yes" : "" %></td>
         <td><%= contact.blacklisted? ? "Yes" : "" %></td>
         <td><%= contact.calls_count %></td>
-        <td><%= contact.last_called_at&.in_time_zone("Europe/Rome")&.strftime("%d/%m/%y") %></td>
+        <td><%= contact.last_called_at&.in_time_zone(tenant_time_zone)&.strftime("%d/%m/%y") %></td>
         <td><%= link_to "Edit", edit_admin_contact_path(contact), class: "btn btn-sm" %></td>
       </tr>
     <% end %>

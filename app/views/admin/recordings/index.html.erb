@@ -32,7 +32,7 @@
     <tbody>
       <% @calls.each do |call| %>
         <tr>
-          <td><%= call.created_at.in_time_zone("Europe/Rome").strftime("%Y-%m-%d %H:%M") %></td>
+          <td><%= call.created_at.in_time_zone(tenant_time_zone).strftime("%Y-%m-%d %H:%M") %></td>
           <td>
             <%= phone_link(call.from_number) %>
             <% if call.contact %>
