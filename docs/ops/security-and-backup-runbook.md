@@ -89,3 +89,29 @@ being baked into the image via `COPY . .`). Rebuild and confirm the image shrank
 docker compose -f compose.yml build callscreen
 docker run --rm --entrypoint sh <image> -c 'ls /rails/.venv 2>/dev/null && echo PRESENT || echo absent'  # → absent
 ```
+
+## 6. faster-whisper healthcheck + dependency ordering (OPS-10)
+
+The faster-whisper sidecar has no healthcheck and callscreen has no `depends_on`
+it, so a down/loading Whisper silently downgrades screened calls to "unknown".
+(The app side is now hardened — WhisperClient raises TransportError and
+ScreeningJob retries + alerts on terminal failure — but the container should
+still be observable.) Add to the faster-whisper service in
+`compose.yml`:
+
+```yaml
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]   # or /v1/models
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s   # the medium model takes time to load
+```
+
+and on the callscreen service:
+
+```yaml
+    depends_on:
+      faster-whisper:
+        condition: service_healthy
+```

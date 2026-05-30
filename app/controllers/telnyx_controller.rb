@@ -669,7 +669,14 @@ class TelnyxController < ApplicationController
     end
 
     return nil unless GreetingsStorage.path_for(slug, effective_voice, effective_tone).exist?
-    "#{ENV.fetch('APP_DOMAIN', 'https://phone.example.com')}/greetings/#{slug}/#{effective_voice}/#{effective_tone}.wav"
+    url = "#{ENV.fetch('APP_DOMAIN', 'https://phone.example.com')}/greetings/#{slug}/#{effective_voice}/#{effective_tone}.wav"
+    # Cloned-voice greetings are served only with a valid signature so the
+    # operator's voice WAVs aren't publicly harvestable (see GreetingSignature).
+    if effective_voice.start_with?("_t")
+      sig = GreetingSignature.encode(slug: slug, voice: effective_voice, tone: effective_tone)
+      url = "#{url}?sig=#{CGI.escape(sig)}"
+    end
+    url
   end
 
   def cc_client

@@ -24,13 +24,13 @@
     {
       "warning_type": "File Access",
       "warning_code": 16,
-      "fingerprint": "c68b82201de60a2565a8302a7e36b85816652e64bf583ec99ac722cb61f3192f",
+      "fingerprint": "4f769fc27cc8743a68e69ac0ab412c92828858d47124afa5df0c0629ddf90aa8",
       "check_name": "SendFile",
       "message": "Parameter value used in file name",
       "file": "app/controllers/greetings_controller.rb",
-      "line": 24,
+      "line": 26,
       "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
-      "code": "send_file(GreetingsStorage.path_for(params[:slug].to_s, :BRAKEMAN_SAFE_LITERAL, params[:tone].to_s), :type => \"audio/wav\", :disposition => :inline)",
+      "code": "send_file(GreetingsStorage.path_for(params[:slug].to_s, params[:voice].to_s, params[:tone].to_s), :type => \"audio/wav\", :disposition => :inline)",
       "render_path": null,
       "location": {
         "type": "method",
@@ -40,7 +40,7 @@
       "user_input": "params[:tone].to_s",
       "confidence": "Weak",
       "cwe_id": [22],
-      "note": "False positive. params[:slug], params[:voice], params[:tone] are each triply validated before path construction in GreetingsController#show: (1) regex (lowercase a-z0-9_, max 40 chars, no slash), (2) catalog/Setting allowlist (GreetingCatalog::SLUGS / Setting::ALLOWED_VOICES / GreetingCatalog::TONE_SLUGS). Path is built from static Rails.root + three allowlist-validated segments + literal .wav. No traversal possible. Reviewed 2026-04-30."
+      "note": "False positive. params[:slug], params[:voice], params[:tone] are each validated before path construction in GreetingsController#show: (1) regex (lowercase a-z0-9_, max 40 chars, no slash); (2) Phrase.exists?(slug); (3) valid_voice_and_tone? — catalog voices via Setting::ALLOWED_VOICES, cloned _t<id> voices via a required GreetingSignature, tone via GreetingCatalog::TONE_SLUGS (base, allowing the _en suffix). GreetingsStorage.path_for additionally raises on any non-[a-z0-9_] component and confines to ROOT. No traversal possible. Reviewed 2026-05-30 (SEC-9 signed cloned-voice serving)."
     },
     {
       "warning_type": "Mass Assignment",
