@@ -190,6 +190,11 @@ class TelnyxController < ApplicationController
     url  = p["recording_urls"]&.values&.first || p["recording_url"]
     call = Call.find_by(call_control_id: ccid)
     return unless call
+    # A delivery with no URL carries nothing to process; ignore it so a later
+    # delivery that DOES carry the URL still wins the flow_state claim below
+    # (rather than a nil-URL delivery winning and stranding ScreeningJob with
+    # no recording to fetch).
+    return if url.blank?
 
     attrs = { recording_url: url, duration_seconds: p["duration_seconds"].to_i }
 
@@ -586,6 +591,10 @@ class TelnyxController < ApplicationController
       return nil unless Setting::ALLOWED_VOICES.include?(effective_voice)
     end
 
+    # Degrade to TTS (return nil) rather than letting path_for raise on a blank/
+    # unsafe component — e.g. a tenant with a blank greeting_tone reaching this
+    # via play_spam_response_audio. Keeps a dropped/blank value off the hot path.
+    return nil unless [ slug, effective_voice, effective_tone ].all? { |c| GreetingsStorage.safe_component?(c) }
     return nil unless GreetingsStorage.path_for(slug, effective_voice, effective_tone).exist?
     url = "#{ENV.fetch('APP_DOMAIN', 'https://phone.example.com')}/greetings/#{slug}/#{effective_voice}/#{effective_tone}.wav"
     # Cloned-voice greetings are served only with a valid signature so the

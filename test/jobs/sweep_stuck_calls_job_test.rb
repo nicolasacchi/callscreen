@@ -35,4 +35,19 @@ class SweepStuckCallsJobTest < ActiveJob::TestCase
     assert_equal "screening_recording", recent.reload.flow_state
     assert_equal "done", done.reload.flow_state
   end
+
+  test "does NOT hang up a long-running bridged/transfer call" do
+    # transfer_dialing fires no webhook on this leg, so updated_at goes stale —
+    # but the caller is talking to the operator. The sweep must leave it alone.
+    bridged = @tenant.calls.create!(
+      call_sid: "v3:bridged-1", call_control_id: "v3:bridged-1",
+      from_number: "+390000000004", status: :legit, flow_state: "transfer_dialing"
+    )
+    bridged.update_columns(updated_at: 30.minutes.ago)
+
+    # No hangup stub: a hangup attempt would raise on the unstubbed POST.
+    SweepStuckCallsJob.new.perform
+
+    assert_equal "transfer_dialing", bridged.reload.flow_state
+  end
 end

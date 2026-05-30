@@ -7,9 +7,10 @@ Rails.application.config.filter_parameters += [
   :passw, :email, :secret, :token, :_key, :crypt, :salt, :certificate, :otp, :ssn, :cvv, :cvc,
   :From, :To, :CallSid, :SpeechResult, :RecordingUrl,
   :phone, :transcript, :screening_transcript, :voicemail_transcript, :name,
-  # :t is the ntfy-action signed token (a 48h state-changing credential). Its
-  # one-char name isn't caught by the :token partial match, so filter it
-  # explicitly — otherwise it lands in the `Parameters:` log line (SEC-1).
-  # :synthetic_token / :token are already covered by the :token match above.
-  :t
+  # The ntfy-action signed token rides in the one-char :t param (a 48h
+  # state-changing credential). Filter it with an ANCHORED regexp — a bare :t
+  # symbol is a substring match that would also redact `to`, `tenant`,
+  # `status`, etc. from every log line (SEC-1). :synthetic_token / :token are
+  # already covered by the :token match above.
+  /\At\z/
 ]

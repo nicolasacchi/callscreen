@@ -10,9 +10,25 @@ class SweepStuckCallsJob < ApplicationJob
 
   STUCK_AFTER = 10.minutes
 
+  # Only these states indicate a dropped outbound command left the caller in
+  # dead air with no follow-up event coming. We deliberately do NOT sweep
+  # "transfer_dialing" (the caller is bridged to the operator on a separate
+  # leg — that conversation can run arbitrarily long and fires no webhook on
+  # this row) or "recording" (a legacy voicemail can run up to
+  # max_recording_seconds). Sweeping those would cut off live, legitimate
+  # calls.
+  SWEEPABLE_STATES = %w[
+    answered
+    screening_prompt_playing
+    screening_recording
+    hanging_up_after_speak
+    spam_disclose_playing
+    troll_playing
+  ].freeze
+
   def perform(stuck_after: STUCK_AFTER)
     cutoff = stuck_after.ago
-    Call.where.not(flow_state: "done")
+    Call.where(flow_state: SWEEPABLE_STATES)
         .where(hung_up_at: nil)
         .where(updated_at: ..cutoff)
         .find_each do |call|

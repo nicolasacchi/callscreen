@@ -7,7 +7,13 @@
 class RequeueStuckRendersJob < ApplicationJob
   queue_as :rendering
 
-  STUCK_AFTER = 15.minutes
+  # Comfortably exceeds the worst-case render budget (a shared phrase renders
+  # across every tenant's voice set × tones, each capped at ~180s) so a
+  # legitimately-slow render isn't requeued mid-flight. The :rendering queue is
+  # single-threaded, so this can only ever cause a redundant re-render after
+  # the original finishes — never a concurrent one — but a wide margin avoids
+  # even that.
+  STUCK_AFTER = 30.minutes
 
   def perform(stuck_after: STUCK_AFTER)
     Phrase.where(render_status: "rendering")

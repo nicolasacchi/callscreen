@@ -42,3 +42,7 @@
 
 # SimpleCov output
 /coverage
+
+# Python bytecode
+__pycache__/
+*.pyc

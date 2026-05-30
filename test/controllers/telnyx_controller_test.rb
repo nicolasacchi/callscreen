@@ -593,9 +593,10 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  test "recording.saved missing URL on first delivery advances once; later delivery is a no-op" do
-    # REL-3: dedupe keys on the flow_state transition, not recording_url, so a
-    # first delivery that lacks a URL doesn't let the second double-fire.
+  test "recording.saved with no URL is a no-op; a later delivery with the URL still wins" do
+    # REL-3: a nil-URL delivery is ignored (nothing to process), so the later
+    # delivery that carries the real URL still advances + enqueues exactly once,
+    # and the URL is persisted (not lost).
     seed_call(flow_state: "screening_recording")
     stub_action(CCID, :speak)
 
@@ -603,7 +604,9 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
       post_event recording_saved_payload(url: nil)
       post_event recording_saved_payload(url: "https://x/late.wav")
     end
-    assert_equal "hanging_up_after_speak", Call.find_by!(call_control_id: CCID).flow_state
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal "hanging_up_after_speak", call.flow_state
+    assert_equal "https://x/late.wav", call.recording_url, "the real URL must be persisted, not lost"
   end
 
   # === Multi-language: caller-language driven greeting + voice swap ===
