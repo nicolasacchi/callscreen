@@ -22,6 +22,11 @@
     <%= f.text_field :forward_back_number %>
     <small style="color: var(--text-muted);">Number the screener dials when a call is whitelisted/legit. Defaults to your mobile if blank.</small>
   </div>
+  <div class="form-group">
+    <%= f.label :admin_locale, "Console language / Lingua del pannello" %>
+    <%= f.select :admin_locale, [ [ "Italiano", "it" ], [ "English", "en" ] ] %>
+    <small style="color: var(--text-muted);">Language of this admin console (not the caller-facing greeting).</small>
+  </div>
 
   <h3>Greeting</h3>
   <div class="form-group">

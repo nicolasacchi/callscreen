@@ -61,6 +61,7 @@ class Tenant < ApplicationRecord
   validates :auto_blacklist_window_days,
             numericality: { only_integer: true, greater_than_or_equal_to: 1, less_than_or_equal_to: 365, allow_nil: true }
 
+  validates :admin_locale, inclusion: { in: %w[it en] }
   validates :spam_response_mode, inclusion: { in: SPAM_RESPONSE_MODES }
   validates :spam_troll_max_seconds,
             numericality: { only_integer: true, greater_than_or_equal_to: 30, less_than_or_equal_to: 300 }

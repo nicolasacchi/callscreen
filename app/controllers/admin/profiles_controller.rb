@@ -44,6 +44,7 @@ module Admin
         :auto_blacklist_window_days,
         :auto_report_spam_globally,
         :auto_detect_language,
+        :admin_locale,
         :voice_clone_active,
         :voice_rotation_enabled,
         :phrase_rotation_enabled,

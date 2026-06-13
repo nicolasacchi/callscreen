@@ -10,11 +10,7 @@
 
 <% if @contacts.none? %>
   <div class="empty-state">
-    <% if params[:q].present? %>
-      No contacts match “<%= params[:q] %>”.
-    <% else %>
-      No contacts yet. They’re created automatically as people call, or add one with “New Contact”.
-    <% end %>
+    <%= params[:q].present? ? t("admin.contacts.empty_filtered", q: params[:q]) : t("admin.contacts.empty_html") %>
   </div>
 <% else %>
 <table>

@@ -35,6 +35,14 @@ module Callscreen
     #
     config.time_zone = "Europe/Rome"
 
+    # Italian-primary product: the operator console defaults to Italian, with
+    # English available and a per-tenant override (Tenant#admin_locale). Missing
+    # :it keys fall back to :en so a partially-translated view never crashes
+    # (P2-4).
+    config.i18n.default_locale = :it
+    config.i18n.available_locales = %i[it en]
+    config.i18n.fallbacks = [ :en ]
+
     # Don't generate system test files.
     config.generators.system_tests = nil
   end

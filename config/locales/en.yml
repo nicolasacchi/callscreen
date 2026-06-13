@@ -29,3 +29,37 @@
 
 en:
   hello: "Hello world"
+  # Admin console — English mirror of it.yml (the primary locale).
+  admin:
+    nav:
+      dashboard: "Dashboard"
+      calls: "Calls"
+      recordings: "Recordings"
+      contacts: "Contacts"
+      phrases: "Phrases"
+      tags: "Tags"
+      rules: "Rules"
+      profile: "Profile"
+      costs: "Costs"
+      tenants: "Tenants"
+      settings: "Settings"
+      logout: "Logout"
+      logged_in_as: "Logged in as"
+      super_admin: "super-admin"
+    skip_to_content: "Skip to content"
+    dashboard:
+      getting_started: "Getting started"
+      no_calls_intro: "No calls screened yet. To go live:"
+      insights_title: "Screening insights (%{days} days)"
+      spam_rate: "Spam rate"
+      spam_calls: "Spam calls"
+      blocked_before_answer: "Blocked before answer"
+      llm_accuracy: "LLM accuracy (reviewed)"
+      top_spam_callers: "Top spam callers"
+      recent_calls: "Recent Calls"
+    calls:
+      empty: "No calls yet. Screened calls will appear here once your number starts forwarding to Telnyx."
+      empty_filtered: "No calls match this filter."
+    contacts:
+      empty_html: "No contacts yet. They’re created automatically as people call, or add one with “New Contact”."
+      empty_filtered: "No contacts match “%{q}”."

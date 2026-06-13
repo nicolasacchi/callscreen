@@ -2,8 +2,8 @@
 
 <% if @stats[:total_all].zero? %>
   <div class="card">
-    <h3>Getting started</h3>
-    <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.5rem;">No calls screened yet. To go live:</p>
+    <h3><%= t("admin.dashboard.getting_started") %></h3>
+    <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.5rem;"><%= t("admin.dashboard.no_calls_intro") %></p>
     <ul style="font-size: 0.875rem; line-height: 1.9; padding-left: 1.25rem;">
       <li>Forward your number to the Telnyx number (the dial-back number lives in <%= link_to "Profile", edit_admin_profile_path %>).</li>
       <li>Pick a greeting and voice in <%= link_to "Profile", edit_admin_profile_path %>.</li>
@@ -57,27 +57,27 @@
 </div>
 
 <div class="card">
-  <h3>Screening insights (<%= @insights[:window_days] %> days)</h3>
+  <h3><%= t("admin.dashboard.insights_title", days: @insights[:window_days]) %></h3>
   <div class="stats">
     <div class="stat-card">
-      <div class="label">Spam rate</div>
+      <div class="label"><%= t("admin.dashboard.spam_rate") %></div>
       <div class="value" style="color: var(--spam)"><%= @insights[:spam_rate] %>%</div>
     </div>
     <div class="stat-card">
-      <div class="label">Spam calls</div>
+      <div class="label"><%= t("admin.dashboard.spam_calls") %></div>
       <div class="value"><%= @insights[:spam] %> / <%= @insights[:total] %></div>
     </div>
     <div class="stat-card">
-      <div class="label">Blocked before answer</div>
+      <div class="label"><%= t("admin.dashboard.blocked_before_answer") %></div>
       <div class="value"><%= @insights[:blocked_before_answer] %></div>
     </div>
     <div class="stat-card">
-      <div class="label">LLM accuracy (reviewed)</div>
+      <div class="label"><%= t("admin.dashboard.llm_accuracy") %></div>
       <div class="value"><%= @insights[:llm_accuracy] ? "#{@insights[:llm_accuracy]}%" : "—" %></div>
     </div>
   </div>
   <% if @insights[:top_spam_callers].any? %>
-    <h4 style="margin: 1rem 0 0.5rem; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Top spam callers</h4>
+    <h4 style="margin: 1rem 0 0.5rem; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;"><%= t("admin.dashboard.top_spam_callers") %></h4>
     <table>
       <thead><tr><th>Number</th><th>Spam calls</th></tr></thead>
       <tbody>

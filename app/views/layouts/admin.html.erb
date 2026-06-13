@@ -143,33 +143,33 @@
   </style>
 </head>
 <body>
-  <a class="skip-link" href="#main">Skip to content</a>
+  <a class="skip-link" href="#main"><%= t("admin.skip_to_content") %></a>
   <div class="layout">
     <div class="sidebar">
       <h2>Call Screener</h2>
       <nav aria-label="Primary">
-        <%= admin_nav_link "Dashboard", admin_root_path, "admin/dashboard" %>
-        <%= admin_nav_link "Calls", admin_calls_path, "admin/calls" %>
-        <%= admin_nav_link "Recordings", admin_recordings_path, "admin/recordings" %>
-        <%= admin_nav_link "Contacts", admin_contacts_path, "admin/contacts" %>
-        <%= admin_nav_link "Phrases", admin_phrases_path, "admin/phrases" %>
-        <%= admin_nav_link "Tags", admin_tags_path, "admin/tags" %>
-        <%= admin_nav_link "Rules", admin_rules_path, "admin/rules" %>
-        <%= admin_nav_link "Profile", admin_profile_path, "admin/profiles" %>
-        <%= admin_nav_link "Costs", admin_costs_path, "admin/costs" %>
+        <%= admin_nav_link t("admin.nav.dashboard"), admin_root_path, "admin/dashboard" %>
+        <%= admin_nav_link t("admin.nav.calls"), admin_calls_path, "admin/calls" %>
+        <%= admin_nav_link t("admin.nav.recordings"), admin_recordings_path, "admin/recordings" %>
+        <%= admin_nav_link t("admin.nav.contacts"), admin_contacts_path, "admin/contacts" %>
+        <%= admin_nav_link t("admin.nav.phrases"), admin_phrases_path, "admin/phrases" %>
+        <%= admin_nav_link t("admin.nav.tags"), admin_tags_path, "admin/tags" %>
+        <%= admin_nav_link t("admin.nav.rules"), admin_rules_path, "admin/rules" %>
+        <%= admin_nav_link t("admin.nav.profile"), admin_profile_path, "admin/profiles" %>
+        <%= admin_nav_link t("admin.nav.costs"), admin_costs_path, "admin/costs" %>
         <% if super_admin? %>
-          <%= admin_nav_link "Tenants", admin_tenants_path, "admin/tenants" %>
-          <%= admin_nav_link "Settings", admin_settings_path, "admin/settings" %>
+          <%= admin_nav_link t("admin.nav.tenants"), admin_tenants_path, "admin/tenants" %>
+          <%= admin_nav_link t("admin.nav.settings"), admin_settings_path, "admin/settings" %>
         <% end %>
       </nav>
       <% if current_tenant %>
         <div style="padding: 0.5rem 1rem; color: var(--text-muted); font-size: 0.75rem;">
-          Logged in as <strong style="color: var(--text);"><%= current_tenant.display_name %></strong>
-          <% if current_tenant.super_admin? %><br><span style="color: var(--primary);">super-admin</span><% end %>
+          <%= t("admin.nav.logged_in_as") %> <strong style="color: var(--text);"><%= current_tenant.display_name %></strong>
+          <% if current_tenant.super_admin? %><br><span style="color: var(--primary);"><%= t("admin.nav.super_admin") %></span><% end %>
         </div>
       <% end %>
       <div class="logout">
-        <%= link_to "Logout", destroy_tenant_session_path, data: { turbo_method: :delete }, style: "color: var(--text-muted); font-size: 0.875rem;" %>
+        <%= link_to t("admin.nav.logout"), destroy_tenant_session_path, data: { turbo_method: :delete }, style: "color: var(--text-muted); font-size: 0.875rem;" %>
       </div>
     </div>
     <main class="main" id="main">

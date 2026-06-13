@@ -25,11 +25,7 @@
 
 <% if @calls.none? %>
   <div class="empty-state">
-    <% if params[:q].present? || params[:status].present? %>
-      No calls match this filter.
-    <% else %>
-      No calls yet. Screened calls will appear here once your number starts forwarding to Telnyx.
-    <% end %>
+    <%= (params[:q].present? || params[:status].present?) ? t("admin.calls.empty_filtered") : t("admin.calls.empty") %>
   </div>
 <% else %>
 <table>

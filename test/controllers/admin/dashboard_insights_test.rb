@@ -12,7 +12,8 @@ module Admin
       @tenant.calls.create!(call_sid: "ins-1", from_number: "+390000000001", status: :spam)
       get admin_root_url
       assert_response :success
-      assert_match "Screening insights", @response.body
+      # Title is localized (the default tenant's admin_locale is "it").
+      assert_match I18n.t("admin.dashboard.insights_title", days: 30, locale: :it), @response.body
     end
   end
 end

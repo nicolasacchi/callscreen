@@ -2,11 +2,20 @@ module Admin
   class BaseController < ApplicationController
     before_action :authenticate_tenant!
     before_action :set_current_tenant
+    around_action :switch_locale
     layout "admin"
 
     helper_method :current_tenant, :super_admin?, :viewing_tenant
 
     private
+
+    # Render the admin console in the tenant's chosen language (P2-4). Falls
+    # back to the app default (:it) when unset or invalid.
+    def switch_locale(&action)
+      locale = current_tenant&.admin_locale
+      locale = I18n.default_locale unless I18n.available_locales.map(&:to_s).include?(locale.to_s)
+      I18n.with_locale(locale, &action)
+    end
 
     # The currently logged-in Tenant (Devise resource).
     def current_tenant

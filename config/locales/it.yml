@@ -1,0 +1,36 @@
+it:
+  # Admin console — Italian (the product's primary locale). English mirror in
+  # en.yml; missing keys fall back to :en (see config/application.rb).
+  admin:
+    nav:
+      dashboard: "Cruscotto"
+      calls: "Chiamate"
+      recordings: "Registrazioni"
+      contacts: "Contatti"
+      phrases: "Frasi"
+      tags: "Etichette"
+      rules: "Regole"
+      profile: "Profilo"
+      costs: "Costi"
+      tenants: "Tenant"
+      settings: "Impostazioni"
+      logout: "Esci"
+      logged_in_as: "Accesso come"
+      super_admin: "super-admin"
+    skip_to_content: "Vai al contenuto"
+    dashboard:
+      getting_started: "Per iniziare"
+      no_calls_intro: "Nessuna chiamata ancora. Per andare online:"
+      insights_title: "Analisi screening (%{days} giorni)"
+      spam_rate: "Tasso spam"
+      spam_calls: "Chiamate spam"
+      blocked_before_answer: "Bloccate prima della risposta"
+      llm_accuracy: "Accuratezza LLM (riviste)"
+      top_spam_callers: "Numeri spam principali"
+      recent_calls: "Chiamate recenti"
+    calls:
+      empty: "Nessuna chiamata ancora. Le chiamate filtrate appariranno qui quando il numero inizierà a inoltrare a Telnyx."
+      empty_filtered: "Nessuna chiamata corrisponde a questo filtro."
+    contacts:
+      empty_html: "Nessun contatto ancora. Vengono creati automaticamente alle chiamate, oppure aggiungine uno con «Nuovo contatto»."
+      empty_filtered: "Nessun contatto corrisponde a «%{q}»."

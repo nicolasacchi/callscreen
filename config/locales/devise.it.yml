@@ -1,0 +1,33 @@
+it:
+  devise:
+    failure:
+      already_authenticated: "Hai già effettuato l'accesso."
+      inactive: "Il tuo account è stato disattivato. Contatta l'amministratore."
+      invalid: "%{authentication_keys} o password non validi."
+      locked: "Il tuo account è bloccato."
+      last_attempt: "Hai ancora un tentativo prima che il tuo account venga bloccato."
+      not_found_in_database: "%{authentication_keys} o password non validi."
+      timeout: "La sessione è scaduta. Accedi di nuovo per continuare."
+      unauthenticated: "Devi effettuare l'accesso per continuare."
+      unconfirmed: "Devi confermare il tuo indirizzo email prima di continuare."
+    sessions:
+      signed_in: "Accesso effettuato con successo."
+      signed_out: "Disconnessione effettuata con successo."
+      already_signed_out: "Disconnessione effettuata con successo."
+    passwords:
+      no_token: "Non puoi accedere a questa pagina senza provenire da un'email di reimpostazione password."
+      send_instructions: "Riceverai un'email con le istruzioni per reimpostare la password tra pochi minuti."
+      updated: "La tua password è stata cambiata con successo. Ora hai effettuato l'accesso."
+      updated_not_active: "La tua password è stata cambiata con successo."
+    mailer:
+      reset_password_instructions:
+        subject: "Istruzioni per reimpostare la password"
+      unlock_instructions:
+        subject: "Istruzioni per sbloccare l'account"
+    unlocks:
+      unlocked: "Il tuo account è stato sbloccato con successo. Accedi per continuare."
+  errors:
+    messages:
+      not_saved:
+        one: "1 errore ha impedito il salvataggio di questo %{resource}:"
+        other: "%{count} errori hanno impedito il salvataggio di questo %{resource}:"
