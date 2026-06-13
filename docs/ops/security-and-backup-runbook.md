@@ -115,3 +115,40 @@ and on the callscreen service:
       faster-whisper:
         condition: service_healthy
 ```
+
+Also pin the sidecar image by digest (not `:latest-cpu`) so a breaking upstream
+image change can't roll in silently:
+
+```yaml
+    image: fedirz/faster-whisper-server@sha256:<digest>
+```
+
+## Pin the Python TTS supply chain (SUP-1 / SUP-2 / P2-10)
+
+The Dockerfile's `tts_build` stage installs `uv` via `curl | sh` and then
+`torch` / `chatterbox-tts` / `kokoro` / `soundfile` / `numpy` unpinned — builds
+are not reproducible and a compromised/yanked release flows straight in. This
+needs a build host (the resolve must run somewhere with the wheels available),
+so it's operator-side. Procedure:
+
+1. In a throwaway build of the `tts_build` stage, freeze the resolved set with
+   hashes:
+   ```bash
+   /opt/tts_venv/bin/python -m pip install uv
+   uv pip compile --generate-hashes --output-file scripts/requirements-tts.lock \
+     - <<'EOF'
+   torch
+   chatterbox-tts
+   kokoro>=0.9.4
+   soundfile
+   numpy
+   EOF
+   ```
+   (Use `--index-url https://download.pytorch.org/whl/cpu` for the torch wheel.)
+2. Commit `scripts/requirements-tts.lock`; change the Dockerfile install to
+   `uv pip sync --require-hashes scripts/requirements-tts.lock`.
+3. Pin `uv` itself (`UV_VERSION=<ver>` in the install invocation) and the
+   `ruby:3.4.8-slim` base by digest.
+4. Once the manifest exists, add a `pip` ecosystem entry to
+   `.github/dependabot.yml` and a `pip-audit` step to CI.
+```
