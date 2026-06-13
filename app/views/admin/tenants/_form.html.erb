@@ -30,7 +30,12 @@
   <div class="form-group">
     <%= f.label :dedicated_number, "Dedicated Telnyx number (B1 path; optional)" %>
     <%= f.text_field :dedicated_number %>
-    <small style="color: var(--text-muted);">Leave blank for the default B2 path (shared number + History-Info routing).</small>
+    <small style="color: var(--text-muted);">
+      Leave blank for the default B2 path (shared number + History-Info routing).
+      <strong>If this tenant has its own Telnyx number, set it HERE</strong> — not
+      just in Mobile. Tenant resolution matches <code>dedicated_number</code> against the
+      Telnyx <em>to</em> first; a number set only in Mobile won't route inbound calls.
+    </small>
   </div>
   <div class="form-group">
     <%= f.label :railsdav_username, "railsdav username (links to your contacts)" %>
