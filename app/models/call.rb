@@ -11,7 +11,8 @@ class Call < ApplicationRecord
     recording: 5,
     completed: 6,
     failed: 7,
-    unknown: 8         # caller said nothing — no enough signal to classify
+    unknown: 8,        # caller said nothing — no enough signal to classify
+    voicemail: 9       # recording captured but transcription unavailable (P2-5 graceful degradation)
   }
 
   # Leg-lifecycle states actually assigned by the Voice API dispatcher. The
@@ -48,6 +49,14 @@ class Call < ApplicationRecord
 
   def ai_reason
     ai_classification&.dig("reason")
+  end
+
+  # One-line operator-facing TL;DR of the voicemail (Italian), produced by the
+  # classifier (P2-3). Nil for calls classified before this existed or by a
+  # non-LLM source.
+  def ai_summary
+    s = ai_classification&.dig("summary")
+    s.presence
   end
 
   def ai_confidence

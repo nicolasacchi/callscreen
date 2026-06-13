@@ -363,12 +363,23 @@ class ScreeningJobTest < ActiveJob::TestCase
     assert_equal "hanging_up_after_speak", @call.flow_state
   end
 
-  test "report_terminal_failure marks call :failed and alerts the operator" do
+  test "report_terminal_failure degrades to a voicemail when a recording exists (P2-5)" do
+    # @call has a recording_url, so a terminal transcription failure should NOT
+    # be a dead :failed — the operator still gets the voicemail to act on.
+    notify = stub_request(:post, ENV["NTFY_URL"]).to_return(status: 200, body: "")
+    ScreeningJob.report_terminal_failure(@call.id, WhisperClient::TransportError.new("boom"))
+    @call.reload
+    assert_equal "voicemail", @call.status
+    assert_not_nil @call.notified_at
+    assert_requested notify
+  end
+
+  test "report_terminal_failure marks :failed when there is no recording to fall back on" do
+    @call.update!(recording_url: nil)
     notify = stub_request(:post, ENV["NTFY_URL"]).to_return(status: 200, body: "")
     ScreeningJob.report_terminal_failure(@call.id, WhisperClient::TransportError.new("boom"))
     @call.reload
     assert_equal "failed", @call.status
-    assert_not_nil @call.notified_at
     assert_requested notify
   end
 

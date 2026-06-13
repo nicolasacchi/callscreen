@@ -128,6 +128,29 @@ class SpamClassifierTest < ActiveSupport::TestCase
     assert_nil result["tokens_out"]
   end
 
+  test "captures the one-line summary from the response (P2-3)" do
+    stub_moonshot(body: { classification: "legit", confidence: 0.8, reason: "delivery",
+                          summary: "Corriere BRT, consegna pacco." })
+    result = SpamClassifier.new("sono il corriere", from_number: "+39").classify
+    assert_equal "Corriere BRT, consegna pacco.", result["summary"]
+  end
+
+  test "injects operator-labeled examples as prior turns (P2-2 few-shot)" do
+    stub_moonshot(body: { classification: "spam", confidence: 0.9, reason: "ok" })
+    examples = [ { transcript: "vuole cambiare gestore luce e gas", label: "spam" } ]
+    SpamClassifier.new("buongiorno", from_number: "+39",
+                       examples: examples, contact_hint: "seen before: spam 3x").classify
+
+    assert_requested :post, ENDPOINT do |req|
+      msgs = JSON.parse(req.body)["messages"]
+      # system + (user example + assistant label) + real user = 4 messages
+      msgs.size == 4 &&
+        msgs[0]["content"].include?("seen before: spam 3x") &&
+        msgs[1]["content"].include?("vuole cambiare gestore") &&
+        JSON.parse(msgs[2]["content"])["classification"] == "spam"
+    end
+  end
+
   private
 
   def stub_moonshot(body:, usage: nil)

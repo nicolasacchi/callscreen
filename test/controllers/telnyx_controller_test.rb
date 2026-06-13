@@ -1048,6 +1048,18 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_equal "recording", call.status
   end
 
+  # === P2-5: STIR/SHAKEN attestation capture ===
+
+  test "call.initiated captures STIR/SHAKEN attestation when present" do
+    answer_stub = stub_action(CCID, :answer)
+    payload = initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+    payload["data"]["payload"]["stir_shaken"] = { "attestation_level" => "A" }
+    post telnyx_voice_url(token: @token), params: payload.to_json,
+         headers: { "Content-Type" => "application/json" }
+    assert_requested answer_stub
+    assert_equal "A", Call.find_by!(call_control_id: CCID).attestation
+  end
+
   # === P1-7: the dispatcher always 200s, even when a handler raises ===
 
   test "a raising handler still returns 200 so Telnyx never replays a webhook storm" do

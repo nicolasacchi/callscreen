@@ -29,17 +29,37 @@ class ScreeningJob < ApplicationJob
     Sentry.capture_exception(error) if defined?(Sentry)
     call = Call.find_by(id: call_id)
     return unless call
-    call.update!(status: :failed)
-    return if call.notified_at?
-    NtfyNotifier.notify(
-      title: "⚠️ Screening non riuscito",
-      message: "Impossibile classificare la chiamata da #{call.from_number} (#{error.class}).",
-      priority: "high",
-      tags: [ "warning" ],
-      url: call.tenant&.ntfy_url,
-      default_priority: call.tenant&.ntfy_priority
-    )
-    call.update!(notified_at: Time.current)
+
+    if call.recording_url.present?
+      # We have the voicemail audio — only transcription/classification failed
+      # (e.g. a sustained Whisper outage). Degrade gracefully to a voicemail the
+      # operator can still act on, rather than a dead :failed with no recourse
+      # (P2-5). The operator listens via the authenticated recording playback.
+      call.update!(status: :voicemail) unless call.status == "voicemail"
+      return if call.notified_at?
+      NtfyNotifier.notify(
+        title: "📨 Messaggio vocale da #{call.contact_name}",
+        message: "Da: #{call.from_number}\nTrascrizione non disponibile — ascolta la registrazione nell'app.",
+        priority: "high",
+        tags: [ "envelope_with_arrow" ],
+        url: call.tenant&.ntfy_url,
+        default_priority: call.tenant&.ntfy_priority,
+        call: call
+      )
+      call.update!(notified_at: Time.current)
+    else
+      call.update!(status: :failed)
+      return if call.notified_at?
+      NtfyNotifier.notify(
+        title: "⚠️ Screening non riuscito",
+        message: "Impossibile classificare la chiamata da #{call.from_number} (#{error.class}).",
+        priority: "high",
+        tags: [ "warning" ],
+        url: call.tenant&.ntfy_url,
+        default_priority: call.tenant&.ntfy_priority
+      )
+      call.update!(notified_at: Time.current)
+    end
   end
 
   def perform(call_id)
@@ -78,8 +98,14 @@ class ScreeningJob < ApplicationJob
     end
 
     sensitivity = tenant.spam_sensitivity || Setting.get("spam_sensitivity").to_f
+    # Feed the classifier this tenant's operator corrections (few-shot) + a
+    # per-caller history hint, so manual feedback compounds (P2-2).
+    feedback = ClassifierFeedback.for(tenant: tenant, contact: call.contact)
+    hints = [ feedback.contact_hint, attestation_hint(call) ].compact.join(" ")
     result = SpamClassifier.new(transcript, from_number: call.from_number,
-                                sensitivity: sensitivity).classify
+                                sensitivity: sensitivity,
+                                examples: feedback.examples,
+                                contact_hint: hints.presence).classify
 
     case result["classification"]
     when "spam"
@@ -132,6 +158,18 @@ class ScreeningJob < ApplicationJob
 
   def caller_language(call)
     LanguageResolver.for(call)
+  end
+
+  # Soft anti-spoofing hint from STIR/SHAKEN attestation (P2-5). Never a hard
+  # block — carrier-forwarded calls (the common path here) strip attestation.
+  def attestation_hint(call)
+    att = call.attestation.to_s.strip
+    return nil if att.blank?
+    if att.casecmp("A").zero? || att.downcase.include?("passed")
+      "Caller ID attestation: #{att} (carrier-verified — spoofing unlikely)."
+    else
+      "Caller ID attestation: #{att} (NOT fully verified — the number may be spoofed)."
+    end
   end
 
   def auto_blacklist_if_pattern_match(call)

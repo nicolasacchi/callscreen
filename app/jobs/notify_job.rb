@@ -62,6 +62,7 @@ class NotifyJob < ApplicationJob
   def spam_message(call)
     parts = []
     parts << "Da: #{call.from_number}"
+    parts << call.ai_summary if call.ai_summary           # one-line TL;DR (P2-3)
     parts << "«#{call.screening_transcript.strip}»" if call.screening_transcript.present?
     parts << ""
     parts << "Motivo: #{call.ai_reason}" if call.ai_reason
@@ -72,6 +73,7 @@ class NotifyJob < ApplicationJob
   def legit_message(call)
     parts = []
     parts << "Da: #{call.from_number}"
+    parts << call.ai_summary if call.ai_summary           # one-line TL;DR (P2-3)
     parts << "«#{call.screening_transcript.strip}»" if call.screening_transcript.present?
     parts << ""
     parts << "Classificazione: #{call.status}#{ai_confidence_suffix(call)}"

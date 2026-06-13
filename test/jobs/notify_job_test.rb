@@ -22,6 +22,17 @@ class NotifyJobTest < ActiveJob::TestCase
     assert_not_nil call.reload.notified_at
   end
 
+  test "includes the ai_summary TL;DR line when present (P2-3)" do
+    call = calls(:spam_completed)
+    call.update!(notified_at: nil,
+                 ai_classification: { "classification" => "spam", "confidence" => 0.9,
+                                      "reason" => "robocall", "summary" => "Telemarketing energia." })
+    NotifyJob.new.perform(call.id)
+    assert_requested :post, @ntfy_url do |req|
+      req.body.to_s.include?("Telemarketing energia.")
+    end
+  end
+
   test "spam notification uses contact.name in title when present" do
     call = calls(:spam_completed)
     call.contact.update!(name: "Mario Spam")

@@ -33,8 +33,13 @@ class NtfyActionsController < ApplicationController
       # they're legit.
       abort_active_spam_response(call)
     when :mark_spam
+      # Persist the spam signal against a Contact (mirror :whitelist) so the
+      # learning loop + per-caller history pick it up (P2-2).
+      contact = call.contact || call.tenant.contacts.find_or_create_by!(phone: call.from_number)
       call.update!(status: :spam)
-      audit!(call, "mark_spam")
+      call.update!(contact: contact) if call.contact_id.nil?
+      audit!(call, "mark_spam", contact_id: contact.id)
+      ReportSpamGloballyJob.maybe_enqueue(call) # opt-in cross-tenant share (P2-7)
     when :mark_legit
       call.update!(status: :legit)
       audit!(call, "mark_legit")

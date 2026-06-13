@@ -1,0 +1,27 @@
+# Auto-contributes an operator-confirmed spam number to the shared railsdav
+# reputation DB (P2-7). Runs in the background — RailsdavSpamReporter is a
+# synchronous HTTP POST that must never sit on a request/webhook path. Only
+# enqueued when the tenant has opted in (auto_report_spam_globally).
+class ReportSpamGloballyJob < ApplicationJob
+  queue_as :default
+  discard_on ActiveRecord::RecordNotFound
+
+  # Guard at the enqueue site so callers don't repeat the opt-in/blank checks.
+  def self.maybe_enqueue(call)
+    return unless call&.tenant&.auto_report_spam_globally?
+    return if call.from_number.blank?
+    perform_later(call.id)
+  end
+
+  def perform(call_id)
+    call = Call.find(call_id)
+    result = RailsdavSpamReporter.report(
+      call.from_number,
+      source:   "auto_local_spam",
+      username: call.tenant&.railsdav_username,
+      notes:    nil
+    )
+    return if result[:ok]
+    Rails.logger.warn("ReportSpamGloballyJob: railsdav report failed for call #{call_id}: #{result[:error]}")
+  end
+end

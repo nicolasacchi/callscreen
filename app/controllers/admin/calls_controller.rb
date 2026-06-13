@@ -18,6 +18,7 @@ module Admin
       call = viewing_tenant.calls.find(params[:id])
       call.update!(status: :spam)
       audit("mark_spam", call, from: call.from_number)
+      ReportSpamGloballyJob.maybe_enqueue(call) # opt-in cross-tenant share (P2-7)
       redirect_to admin_call_path(call), notice: "Marked as spam."
     end
 
@@ -34,6 +35,7 @@ module Admin
       contact.update!(blacklisted: true, whitelisted: false)
       call.update!(status: :spam)
       audit("block_number", call, contact_id: contact.id, from: call.from_number)
+      ReportSpamGloballyJob.maybe_enqueue(call) # opt-in cross-tenant share (P2-7)
       redirect_to admin_call_path(call), notice: "Number blocked."
     end
 

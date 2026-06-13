@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_13_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_13_020000) do
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "actor_id"
@@ -29,6 +29,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_000000) do
     t.text "ai_classification"
     t.string "ai_classification_source"
     t.datetime "answered_at"
+    t.string "attestation"
     t.integer "billable_seconds"
     t.string "call_control_id"
     t.string "call_sid"
@@ -181,6 +182,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_000000) do
     t.integer "auto_blacklist_threshold", default: 3
     t.integer "auto_blacklist_window_days", default: 7
     t.boolean "auto_detect_language", default: true, null: false
+    t.boolean "auto_report_spam_globally", default: false, null: false
     t.datetime "created_at", null: false
     t.datetime "current_sign_in_at"
     t.string "current_sign_in_ip"

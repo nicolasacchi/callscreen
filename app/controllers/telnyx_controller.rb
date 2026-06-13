@@ -98,6 +98,7 @@ class TelnyxController < ApplicationController
       status: :initiated,
       flow_state: "initiated",
       contact: contact,
+      attestation: extract_attestation(p),
       unattributed: tenant_unattributed?(tenant, to: to, sip_headers: sip_headers)
     }
 
@@ -304,6 +305,19 @@ class TelnyxController < ApplicationController
     end
 
     Tenant.default
+  end
+
+  # Best-effort STIR/SHAKEN attestation capture from the call.initiated payload.
+  # Telnyx's exact field placement varies by configuration, so probe the likely
+  # locations defensively; absent → nil (the common carrier-forwarded case).
+  # Used only as a soft classifier hint, never a hard block.
+  def extract_attestation(payload)
+    ss = payload["stir_shaken"]
+    if ss.is_a?(Hash)
+      return (ss["attestation_level"] || ss["attestation"] || ss["verstat"]).to_s.presence
+    end
+    return ss.to_s.presence if ss.is_a?(String)
+    payload["verstat"].to_s.presence
   end
 
   def tenant_unattributed?(tenant, to:, sip_headers:)

@@ -43,6 +43,39 @@
   ], colors: ["#6366f1", "#ef4444"], library: { scales: { y: { beginAtZero: true } } } %>
 </div>
 
+<div class="card">
+  <h3>Screening insights (<%= @insights[:window_days] %> days)</h3>
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">Spam rate</div>
+      <div class="value" style="color: var(--spam)"><%= @insights[:spam_rate] %>%</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Spam calls</div>
+      <div class="value"><%= @insights[:spam] %> / <%= @insights[:total] %></div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Blocked before answer</div>
+      <div class="value"><%= @insights[:blocked_before_answer] %></div>
+    </div>
+    <div class="stat-card">
+      <div class="label">LLM accuracy (reviewed)</div>
+      <div class="value"><%= @insights[:llm_accuracy] ? "#{@insights[:llm_accuracy]}%" : "—" %></div>
+    </div>
+  </div>
+  <% if @insights[:top_spam_callers].any? %>
+    <h4 style="margin: 1rem 0 0.5rem; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Top spam callers</h4>
+    <table>
+      <thead><tr><th>Number</th><th>Spam calls</th></tr></thead>
+      <tbody>
+        <% @insights[:top_spam_callers].each do |number, count| %>
+          <tr><td><%= number %></td><td><%= count %></td></tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>
+
 <h3 style="margin-bottom: 0.75rem;">Recent Calls</h3>
 <table>
   <thead>
