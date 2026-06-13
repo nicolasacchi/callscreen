@@ -27,6 +27,7 @@ class Call < ApplicationRecord
     screening_recording
     recording
     transfer_dialing
+    bridged
     hanging_up_after_speak
     spam_disclose_playing
     troll_playing

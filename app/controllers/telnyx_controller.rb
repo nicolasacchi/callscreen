@@ -49,6 +49,7 @@ class TelnyxController < ApplicationController
     when "call.recording.saved"    then handle_recording_saved(payload)
     when "call.playback.ended", "call.speak.ended"
                                    then handle_playback_or_speak_ended(payload)
+    when "call.bridged"            then handle_bridged(payload)
     when "call.hangup"             then handle_hangup(payload)
     else
       Rails.logger.info("TelnyxController: ignoring event_type=#{event.inspect}")
@@ -159,6 +160,15 @@ class TelnyxController < ApplicationController
     call = Call.find_by(call_control_id: ccid)
     return unless call
 
+    # Telnyx reports playback/speak failure as this same event with a non-
+    # "completed" status (there is no separate failure event). Surface it for
+    # observability; the FSM transitions below are safe either way (a failed
+    # greeting still proceeds to record; a failed goodbye still hangs up).
+    status = p["status"].to_s
+    if status.present? && status != "completed"
+      Rails.logger.warn("playback/speak ended status=#{status.inspect} call=#{call.id} flow_state=#{call.flow_state}")
+    end
+
     case call.flow_state
     when "screening_prompt_playing"
       # Greeting finished — start recording the caller's speech.
@@ -234,6 +244,19 @@ class TelnyxController < ApplicationController
       # delivery. Don't re-hang up; the original leg is already being handled.
       Rails.logger.info("recording.saved in non-recording flow_state=#{call.flow_state}; ignoring")
     end
+  end
+
+  # A transfer connected. Move out of the transient transfer_dialing state into
+  # "bridged" so the live operator conversation is never touched by the
+  # stuck-call sweep — and, conversely, so a transfer that NEVER bridges (stays
+  # transfer_dialing past the sweep cutoff) becomes sweepable instead of
+  # stranding the caller in dead air.
+  def handle_bridged(payload)
+    p    = payload.dig("data", "payload") || {}
+    ccid = p["call_control_id"]
+    call = Call.find_by(call_control_id: ccid)
+    return unless call
+    call.update!(flow_state: "bridged") if call.flow_state == "transfer_dialing"
   end
 
   def handle_hangup(payload)

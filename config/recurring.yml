@@ -32,3 +32,18 @@ production:
     class: SweepStuckCallsJob
     queue: default
     schedule: every 5 minutes
+
+  # Re-classify calls that captured a recording but lost their ScreeningJob
+  # enqueue (worker crash between the atomic claim and perform_later), so a real
+  # caller isn't left unclassified + unnotified.
+  reconcile_stuck_screenings:
+    class: ReconcileStuckScreeningsJob
+    queue: default
+    schedule: every 5 minutes
+
+  # Hourly aggregate health digest to the operator ntfy when failures
+  # accumulate (dead set, failed calls/renders, stuck calls).
+  operator_health_watchdog:
+    class: OperatorHealthWatchdogJob
+    queue: default
+    schedule: every hour at minute 7

@@ -1048,6 +1048,23 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_equal "recording", call.status
   end
 
+  # === P1-4: call.bridged confirms a transfer connected ===
+
+  test "call.bridged moves a connected transfer from transfer_dialing to bridged" do
+    seed_call(flow_state: "transfer_dialing", status: :legit)
+    post_event event_envelope("call.bridged", { "call_control_id" => CCID, "state" => "bridged" })
+    assert_response :success
+    assert_equal "bridged", Call.find_by!(call_control_id: CCID).flow_state
+  end
+
+  test "playback.ended with a non-completed status still advances the flow (logged, not stranded)" do
+    seed_call(flow_state: "hanging_up_after_speak")
+    hangup_stub = stub_action(CCID, :hangup)
+    post_event event_envelope("call.playback.ended", { "call_control_id" => CCID, "status" => "failed" })
+    assert_requested hangup_stub
+    assert_equal "done", Call.find_by!(call_control_id: CCID).flow_state
+  end
+
   private
 
   def seed_call(flow_state:, contact: nil, screening_transcript: nil, status: :screening,

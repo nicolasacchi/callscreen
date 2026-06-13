@@ -12,15 +12,20 @@ class SweepStuckCallsJob < ApplicationJob
 
   # Only these states indicate a dropped outbound command left the caller in
   # dead air with no follow-up event coming. We deliberately do NOT sweep
-  # "transfer_dialing" (the caller is bridged to the operator on a separate
-  # leg — that conversation can run arbitrarily long and fires no webhook on
-  # this row) or "recording" (a legacy voicemail can run up to
-  # max_recording_seconds). Sweeping those would cut off live, legitimate
-  # calls.
+  # "bridged" (the caller is connected to the operator on a separate leg — that
+  # conversation can run arbitrarily long and fires no webhook on this row) or
+  # "recording" (a legacy voicemail can run up to max_recording_seconds).
+  # Sweeping those would cut off live, legitimate calls.
+  #
+  # "transfer_dialing" IS swept: call.bridged moves a connected transfer to
+  # "bridged" within timeout_secs (~15s), so a call left in transfer_dialing
+  # past the cutoff is one whose transfer was accepted but never connected —
+  # previously stranded forever (the leg fires no further event).
   SWEEPABLE_STATES = %w[
     answered
     screening_prompt_playing
     screening_recording
+    transfer_dialing
     hanging_up_after_speak
     spam_disclose_playing
     troll_playing

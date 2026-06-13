@@ -2,6 +2,11 @@
 
 # If running the rails server then create or migrate existing database
 if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
+  # Snapshot the DB before applying migrations. SQLite has no transactional DDL
+  # rollback and the cron backup can be up to 24h stale, so a bad migration on
+  # boot could otherwise lose data with no recent restore point. Best-effort:
+  # never fail-close the boot (a fresh DB has no source yet — the task skips it).
+  ./bin/rails db:backup || echo "docker-entrypoint: db:backup failed (continuing to db:prepare)"
   ./bin/rails db:prepare
   ./bin/rails db:seed
 fi

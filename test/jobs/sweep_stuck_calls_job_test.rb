@@ -36,18 +36,36 @@ class SweepStuckCallsJobTest < ActiveJob::TestCase
     assert_equal "done", done.reload.flow_state
   end
 
-  test "does NOT hang up a long-running bridged/transfer call" do
-    # transfer_dialing fires no webhook on this leg, so updated_at goes stale —
-    # but the caller is talking to the operator. The sweep must leave it alone.
+  test "does NOT hang up a long-running bridged call" do
+    # A connected transfer is moved to "bridged" by call.bridged; that
+    # conversation runs arbitrarily long and fires no webhook on this leg, so
+    # the sweep must leave it alone.
     bridged = @tenant.calls.create!(
       call_sid: "v3:bridged-1", call_control_id: "v3:bridged-1",
-      from_number: "+390000000004", status: :legit, flow_state: "transfer_dialing"
+      from_number: "+390000000004", status: :legit, flow_state: "bridged"
     )
     bridged.update_columns(updated_at: 30.minutes.ago)
 
     # No hangup stub: a hangup attempt would raise on the unstubbed POST.
     SweepStuckCallsJob.new.perform
 
-    assert_equal "transfer_dialing", bridged.reload.flow_state
+    assert_equal "bridged", bridged.reload.flow_state
+  end
+
+  test "hangs up a transfer stuck in transfer_dialing (never bridged)" do
+    # A transfer accepted by Telnyx but never connected stays transfer_dialing
+    # with no further event — previously stranded forever. Now sweepable.
+    hangup = stub_request(:post, %r{api\.telnyx\.com/v2/calls/.+/actions/hangup})
+             .to_return(status: 200, body: "{}")
+    stuck = @tenant.calls.create!(
+      call_sid: "v3:dialing-1", call_control_id: "v3:dialing-1",
+      from_number: "+390000000005", status: :legit, flow_state: "transfer_dialing"
+    )
+    stuck.update_columns(updated_at: 30.minutes.ago)
+
+    SweepStuckCallsJob.new.perform
+
+    assert_equal "done", stuck.reload.flow_state
+    assert_requested hangup
   end
 end
