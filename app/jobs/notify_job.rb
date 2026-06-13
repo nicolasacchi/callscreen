@@ -66,7 +66,7 @@ class NotifyJob < ApplicationJob
     parts << "«#{call.screening_transcript.strip}»" if call.screening_transcript.present?
     parts << ""
     parts << "Motivo: #{call.ai_reason}" if call.ai_reason
-    parts << "Confidenza: #{(call.ai_confidence.to_f * 100).round}%" if call.ai_confidence
+    parts << "Confidenza: #{call.confidence_pct}%" if call.confidence_pct
     parts.join("\n").strip
   end
 
@@ -88,7 +88,7 @@ class NotifyJob < ApplicationJob
   end
 
   def ai_confidence_suffix(call)
-    return "" unless call.ai_confidence
-    " (#{(call.ai_confidence.to_f * 100).round}%)"
+    return "" unless call.confidence_pct
+    " (#{call.confidence_pct}%)"
   end
 end

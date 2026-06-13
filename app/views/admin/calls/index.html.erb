@@ -61,7 +61,7 @@
         <td class="truncate"><%= truncate(call.screening_transcript, length: 60) %></td>
         <td class="truncate"><%= truncate(call.voicemail_transcript, length: 60) %></td>
         <td><%= call.duration_seconds ? "#{call.duration_seconds}s" : "-" %></td>
-        <td><%= call.ai_confidence ? "#{(call.ai_confidence * 100).round}%" : "-" %></td>
+        <td><%= call.confidence_pct ? "#{call.confidence_pct}%" : "-" %></td>
       </tr>
     <% end %>
   </tbody>

@@ -75,8 +75,7 @@ class TranscribeRecordingJob < ApplicationJob
       parts << "Detto: «#{cleaned}»"
     end
     if call.ai_classification.present?
-      conf = call.ai_confidence
-      suffix = conf ? " (#{(conf.to_f * 100).round}%)" : ""
+      suffix = call.confidence_pct ? " (#{call.confidence_pct}%)" : ""
       parts << ""
       parts << "Classificazione: #{call.status}#{suffix}"
     end

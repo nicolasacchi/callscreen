@@ -22,6 +22,26 @@ class NotifyJobTest < ActiveJob::TestCase
     assert_not_nil call.reload.notified_at
   end
 
+  test "spam message renders the confidence percentage" do
+    call = calls(:spam_completed)
+    call.update!(notified_at: nil,
+                 ai_classification: { "classification" => "spam", "confidence" => 0.9, "reason" => "x" })
+    NotifyJob.new.perform(call.id)
+    assert_requested :post, @ntfy_url do |req|
+      req.body.to_s.include?("Confidenza: 90%")
+    end
+  end
+
+  test "legit message renders the confidence suffix" do
+    call = calls(:spam_completed)
+    call.update!(notified_at: nil, status: :legit,
+                 ai_classification: { "classification" => "legit", "confidence" => 0.75, "reason" => "x" })
+    NotifyJob.new.perform(call.id)
+    assert_requested :post, @ntfy_url do |req|
+      req.body.to_s.include?("(75%)")
+    end
+  end
+
   test "includes the ai_summary TL;DR line when present (P2-3)" do
     call = calls(:spam_completed)
     call.update!(notified_at: nil,

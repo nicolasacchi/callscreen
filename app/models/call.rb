@@ -63,6 +63,14 @@ class Call < ApplicationRecord
     ai_classification&.dig("confidence")
   end
 
+  # AI confidence as a whole-number percentage, or nil when unknown. Single home
+  # for the `(confidence * 100).round` idiom duplicated across NotifyJob /
+  # TranscribeRecordingJob / the call views (CQ-5).
+  def confidence_pct
+    return nil if ai_confidence.nil?
+    (ai_confidence.to_f * 100).round
+  end
+
   def llm_classified?
     ai_classification_source == "llm"
   end
