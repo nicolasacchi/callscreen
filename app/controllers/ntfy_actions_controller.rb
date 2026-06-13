@@ -8,7 +8,6 @@ class NtfyActionsController < ApplicationController
 
   def whitelist; perform!(:whitelist); end
   def mark_spam; perform!(:mark_spam); end
-  def mark_legit; perform!(:mark_legit); end
   def report_spam_globally; perform!(:report_spam_globally); end
 
   private
@@ -40,9 +39,6 @@ class NtfyActionsController < ApplicationController
       call.update!(contact: contact) if call.contact_id.nil?
       audit!(call, "mark_spam", contact_id: contact.id)
       ReportSpamGloballyJob.maybe_enqueue(call) # opt-in cross-tenant share (P2-7)
-    when :mark_legit
-      call.update!(status: :legit)
-      audit!(call, "mark_legit")
     when :report_spam_globally
       result = RailsdavSpamReporter.report(
         call.from_number,

@@ -15,7 +15,6 @@ Rails.application.routes.draw do
   # ntfy notification action buttons (signed-token authed, no session)
   post "ntfy/calls/:call_id/whitelist", to: "ntfy_actions#whitelist", as: :ntfy_whitelist_call
   post "ntfy/calls/:call_id/spam",      to: "ntfy_actions#mark_spam", as: :ntfy_spam_call
-  post "ntfy/calls/:call_id/legit",     to: "ntfy_actions#mark_legit", as: :ntfy_legit_call
   post "ntfy/calls/:call_id/report_spam_globally",
        to: "ntfy_actions#report_spam_globally", as: :ntfy_report_spam_globally_call
 

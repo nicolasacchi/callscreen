@@ -1,6 +1,6 @@
 # Opt-in line/branch coverage: `COVERAGE=1 bin/rails test`. Must load before any
-# application code. Gated so normal/CI runs aren't slowed; a coverage floor can
-# be added once a baseline is established (TEST-6).
+# application code. Gated so normal/CI runs aren't slowed; a COVERAGE=1 CI job
+# enforces the floor below (TEST-7).
 if ENV["COVERAGE"]
   require "simplecov"
   SimpleCov.start "rails" do
@@ -8,6 +8,9 @@ if ENV["COVERAGE"]
     add_filter "/test/"
     add_filter "/config/"
     add_filter "/db/"
+    # Floor a few points below the measured baseline (line ~86%, branch ~72% as
+    # of 2026-06) so coverage can't silently regress, with headroom for churn.
+    minimum_coverage line: 80, branch: 65
   end
 end
 

@@ -15,7 +15,6 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
                     forward_back_number: nil,
                     railsdav_username: "default",
                     mobile_number: "+393990000001")
-    Setting.set("transcription_engine", "Google")
   end
 
   CCID         = "v3:test-call-control-id-1"

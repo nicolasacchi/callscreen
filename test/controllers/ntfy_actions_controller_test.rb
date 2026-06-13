@@ -33,13 +33,6 @@ class NtfyActionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "ntfy", AuditLog.recent.first.metadata["source"]
   end
 
-  test "mark_legit: valid token flips status" do
-    tok = NtfyActionToken.encode(call_id: @call.id, action: "mark_legit")
-    post ntfy_legit_call_url(@call.id, t: tok)
-    assert_response :ok
-    assert_equal "legit", @call.reload.status
-  end
-
   test "rejects token issued for a different action" do
     tok = NtfyActionToken.encode(call_id: @call.id, action: "whitelist")
     post ntfy_spam_call_url(@call.id, t: tok)  # tok is for whitelist, URL is spam

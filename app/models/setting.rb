@@ -13,11 +13,9 @@ class Setting < ApplicationRecord
     "screening_speech_timeout" => "3",
     "auto_delete_days" => "30",
     "auto_delete_transcripts_days" => "30",
-    "transcription_engine" => "Google",
     "telnyx_phone_number" => "+390999000355"
   }.freeze
 
-  ALLOWED_TRANSCRIPTION_ENGINES = %w[Google Telnyx Azure Deepgram].freeze
   ALLOWED_VOICES = GreetingCatalog::ALLOWED_VOICES
 
   VALIDATORS = {
@@ -32,7 +30,6 @@ class Setting < ApplicationRecord
     "greeting_variant" => :validate_greeting_variant,
     "greeting_tone" => :validate_greeting_tone,
     "voicemail_prompt" => :validate_text,
-    "transcription_engine" => :validate_transcription_engine,
     "telnyx_phone_number" => :validate_phone_number
   }.freeze
 
@@ -108,9 +105,5 @@ class Setting < ApplicationRecord
   def self.validate_text(v)
     s = v.to_s
     s.length.between?(1, 500)
-  end
-
-  def self.validate_transcription_engine(v)
-    ALLOWED_TRANSCRIPTION_ENGINES.include?(v.to_s)
   end
 end

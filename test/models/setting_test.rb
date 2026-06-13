@@ -109,22 +109,4 @@ class SettingTest < ActiveSupport::TestCase
     assert_nothing_raised { Setting.set("custom_unknown_key", "anything goes") }
     assert_equal "anything goes", Setting.find_by(key: "custom_unknown_key").value
   end
-
-  test "transcription_engine accepts the four supported engines" do
-    Setting::ALLOWED_TRANSCRIPTION_ENGINES.each do |engine|
-      assert_nothing_raised { Setting.set("transcription_engine", engine) }
-      assert_equal engine, Setting.get("transcription_engine")
-    end
-  end
-
-  test "transcription_engine rejects unknown engines (case-sensitive)" do
-    assert_raises(Setting::InvalidValue) { Setting.set("transcription_engine", "OpenAI") }
-    assert_raises(Setting::InvalidValue) { Setting.set("transcription_engine", "google") } # lowercase
-    assert_raises(Setting::InvalidValue) { Setting.set("transcription_engine", "") }
-  end
-
-  test "transcription_engine default is Google" do
-    Setting.where(key: "transcription_engine").destroy_all
-    assert_equal "Google", Setting.get("transcription_engine")
-  end
 end

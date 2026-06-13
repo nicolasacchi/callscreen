@@ -130,12 +130,6 @@
         <small style="display: block; margin-top: 0.25rem; color: var(--text-muted);">
           ✓ = pre-rendered audio for the currently selected phrase + tone. Otherwise the call falls back to Telnyx's built-in voice.
         </small>
-      <% elsif setting.key == "transcription_engine" %>
-        <select name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>">
-          <% Setting::ALLOWED_TRANSCRIPTION_ENGINES.each do |v| %>
-            <option value="<%= v %>" <%= "selected" if setting.value == v %>><%= v %></option>
-          <% end %>
-        </select>
       <% else %>
         <input type="text" name="settings[<%= setting.key %>]" id="settings_<%= setting.key %>" value="<%= setting.value %>">
       <% end %>

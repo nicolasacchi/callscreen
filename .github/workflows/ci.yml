@@ -88,6 +88,8 @@ jobs:
       - name: Prepare test database
         run: bin/rails db:test:prepare
 
-      - name: Run tests
+      - name: Run tests (with coverage floor)
         run: bin/rails test
+        env:
+          COVERAGE: "1"   # enforces SimpleCov minimum_coverage (test/test_helper.rb)
 
