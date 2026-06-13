@@ -1048,6 +1048,21 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_equal "recording", call.status
   end
 
+  # === P1-7: the dispatcher always 200s, even when a handler raises ===
+
+  test "a raising handler still returns 200 so Telnyx never replays a webhook storm" do
+    # Make a collaborator deep in handle_initiated blow up; the top-level rescue
+    # must still ACK 200 (a 5xx would make Telnyx re-deliver and replay the flow).
+    original = RailsdavContactsClient.method(:lookup)
+    RailsdavContactsClient.define_singleton_method(:lookup) { |*| raise "boom" }
+    begin
+      post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+      assert_response :success
+    ensure
+      RailsdavContactsClient.define_singleton_method(:lookup, original)
+    end
+  end
+
   # === P1-4: call.bridged confirms a transfer connected ===
 
   test "call.bridged moves a connected transfer from transfer_dialing to bridged" do
