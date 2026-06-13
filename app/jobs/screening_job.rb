@@ -173,30 +173,15 @@ class ScreeningJob < ApplicationJob
   end
 
   def auto_blacklist_if_pattern_match(call)
-    tenant = call.tenant
+    decision = AutoBlacklistPolicy.decide(call)
+    return unless decision.blacklist?
+
     contact = call.contact
-    return unless contact
-    return if contact.blacklisted? || contact.whitelisted?
-
-    threshold = tenant.auto_blacklist_threshold
-    window    = tenant.auto_blacklist_window_days
-    # A nil threshold DISABLES auto-blacklist — that's the documented off switch
-    # (the validator forbids 0, so nil is the only way to turn it off). The
-    # previous `|| 3` silently re-enabled it at the default, so an operator who
-    # cleared the field still got blacklisting. A set value is >= 1 per the
-    # validator.
-    return if threshold.nil? || threshold.to_i <= 0
-    window = window.nil? ? 7 : window.to_i
-    return if window <= 0
-
-    count = contact.recent_spam_count(within: window.days)
-    return if count < threshold.to_i
-
     contact.update!(blacklisted: true)
     AuditLog.record(
-      action: "auto_blacklist", subject: contact, tenant: tenant,
-      from: call.from_number, spam_count: count,
-      window_days: window, threshold: threshold.to_i
+      action: "auto_blacklist", subject: contact, tenant: call.tenant,
+      from: call.from_number, spam_count: decision.count,
+      window_days: decision.window_days, threshold: decision.threshold
     )
   end
 end

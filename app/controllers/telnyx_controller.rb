@@ -224,7 +224,7 @@ class TelnyxController < ApplicationController
       call.reload
       # Enqueue classification FIRST — it is the load-bearing work. The goodbye
       # is cosmetic, but it can raise (e.g. a SQLite busy error in
-      # pick_voice_for_call!'s update_columns under contention). If it raised
+      # VoiceSelector's update_columns under contention). If it raised
       # before the enqueue, a real caller would be screened, hung up on, and
       # NEVER classified or notified — the worst silent failure in the product.
       # So enqueue, then play the goodbye inside a guard that can't block it.
@@ -348,8 +348,8 @@ class TelnyxController < ApplicationController
   # call.playback.ended (state=hanging_up_after_speak) issues the hangup.
   def play_goodbye(call, phrase:)
     lang  = caller_language(call)
-    voice = pick_voice_for_call!(call)
-    audio = greeting_audio_url_for(call.tenant, slug: phrase, language: lang, voice: voice)
+    voice = VoiceSelector.for_call!(call)
+    audio = GreetingAudioResolver.url(tenant: call.tenant, slug: phrase, voice: voice, language: lang)
     play_audio_or_speak(call, audio_url: audio,
                         fallback_text: phrase_text(phrase, lang) || "Arrivederci.", lang: lang)
   end
@@ -359,13 +359,13 @@ class TelnyxController < ApplicationController
     lang   = caller_language(call)
     now    = e2e_injected_time || Time.current
     phrase = PhrasePoolResolver.new(call: call, now: now).resolve!
-    voice  = pick_voice_for_call!(call)
+    voice  = VoiceSelector.for_call!(call)
     if phrase
       call.update_columns(selected_phrase_slug: phrase.slug)
       Rails.logger.info("phrase_resolver: call_control_id=#{call.call_control_id} slug=#{phrase.slug} voice=#{voice}")
     end
     slug  = phrase&.slug || tenant.greeting_variant
-    audio = greeting_audio_url_for(tenant, slug: slug, language: lang, voice: voice)
+    audio = GreetingAudioResolver.url(tenant: tenant, slug: slug, voice: voice, language: lang)
     play_audio_or_speak(call, audio_url: audio,
                         fallback_text: phrase_text(slug, lang) || tenant.greeting_text || Setting.get("greeting_text"),
                         lang: lang)
@@ -387,9 +387,9 @@ class TelnyxController < ApplicationController
   def play_spam_response_audio(call, slug)
     tenant = call.tenant
     lang   = caller_language(call)
-    voice  = tenant.greeting_voice  # forced Kokoro, bypasses pick_voice_for_call!
-    audio  = audio_url_for_voice(slug: slug, voice: voice,
-                                 tone: tenant.greeting_tone, language: lang)
+    voice  = tenant.greeting_voice  # forced Kokoro, bypasses VoiceSelector
+    audio  = GreetingAudioResolver.url_for_voice(slug: slug, voice: voice,
+                                                 tone: tenant.greeting_tone, language: lang)
     play_audio_or_speak(call, audio_url: audio, fallback_text: phrase_text(slug, lang) || "", lang: lang)
   end
 
@@ -483,40 +483,22 @@ class TelnyxController < ApplicationController
     (count.to_f / 5).clamp(0.5, 1.0)
   end
 
-  # Picks the voice to use for every audio segment of this call's
-  # lifetime (greeting + goodbye + voicemail prompt). Advances the
-  # rotation cursor at most once per call by caching the picked voice
-  # on `Call#selected_voice`. Subsequent invocations return the cached
-  # value, so a single call never advances the cursor twice.
-  def pick_voice_for_call!(call)
-    return call.selected_voice if call.selected_voice.present?
-    tenant = call.tenant
-    voice =
-      if tenant.voice_rotation_ready?
-        tenant.next_rotated_voice!
-      elsif tenant.voice_clone_ready?
-        tenant.cloned_voice_dir
-      else
-        tenant.greeting_voice
-      end
-    call.update_columns(selected_voice: voice) if voice.present?
-    voice
-  end
-
   # Returns the text for a phrase by slug, preferring the system row
   # (`tenant_id IS NULL`) over any tenant-authored row that happens to
   # share the slug. Reserved-slug validation prevents new collisions on
   # creation, but pre-existing tenant rows could otherwise win the
   # lookup and bypass the seeded system text.
+  # Phrase text comes from the DB exclusively (ARCH-4): db:seed re-creates every
+  # system Phrase row idempotently on each boot, so a miss here is a seed/render
+  # bug worth surfacing — not a normal case to silently paper over with the
+  # GreetingCatalog constant (which is now seed-data + structural metadata only).
+  # Returning nil is safe: callers fall back to tenant.greeting_text / TTS.
   def phrase_text(slug, lang)
     return nil if slug.blank?
     p = Phrase.where(slug: slug.to_s).order(Arel.sql("tenant_id IS NULL DESC")).first
-    if p && p.text(lang).present?
-      return p.text(lang)
-    end
-    GreetingCatalog.text_for(slug, language: lang) ||
-      GreetingCatalog::SYSTEM_PHRASES.dig(slug.to_s, lang) ||
-      GreetingCatalog::SYSTEM_PHRASES.dig(slug.to_s, "it")
+    return p.text(lang) if p && p.text(lang).present?
+    Rails.logger.warn("phrase_text: no Phrase row for slug=#{slug.inspect} lang=#{lang.inspect} — check db:seed")
+    nil
   end
 
   # Language to use for greeting + Whisper. Delegates to LanguageResolver
@@ -546,8 +528,8 @@ class TelnyxController < ApplicationController
     # Used by the legacy whitelisted-voicemail path (no screening).
     tenant = call.tenant
     lang  = caller_language(call)
-    voice = pick_voice_for_call!(call)
-    audio = greeting_audio_url_for(tenant, slug: "voicemail_prompt", language: lang, voice: voice)
+    voice = VoiceSelector.for_call!(call)
+    audio = GreetingAudioResolver.url(tenant: tenant, slug: "voicemail_prompt", voice: voice, language: lang)
     play_audio_or_speak(call, audio_url: audio, fallback_text: phrase_text("voicemail_prompt", lang), lang: lang)
     cc_client.record_start(call.call_control_id,
       max_length: tenant.max_recording_seconds || 120,
@@ -573,94 +555,6 @@ class TelnyxController < ApplicationController
     end
   end
 
-  # Picks the pre-rendered audio URL for a greeting/system phrase.
-  # Resolution priority:
-  #
-  #   1. Voice ROTATION (when enabled): cycle through the tenant's list
-  #      of voice ids (which may include _t<id> for the cloned voice).
-  #      One pick per call — atomic counter on Tenant.
-  #   2. CLONED voice (when voice_clone_active + rendered).
-  #   3. Default Kokoro voice in the caller's language (auto-swapped via
-  #      GreetingCatalog::VOICE_LANGUAGE_PAIRS).
-  #
-  # Returns nil if no rendered file exists at any tier → caller falls
-  # back to Telnyx <speak> in the parent helper.
-  #
-  # When `voice:` is given (the supported path post-2026-05-07), the
-  # method skips rotation/clone selection entirely and just builds the
-  # URL for the picked voice. The rotation cursor advance happens
-  # exactly once per call in `pick_voice_for_call!`. Falls back to the
-  # tenant's default greeting_voice if the file is missing for the
-  # picked voice. The legacy code path (no `voice:`) is preserved as a
-  # safety net for any caller that hasn't been migrated.
-  def greeting_audio_url_for(tenant, slug:, language: nil, voice: nil)
-    return nil unless slug
-    # Slug must reference a known Phrase (DB-backed allowlist) — falls
-    # back to GreetingCatalog::ALL_SLUGS for any in-flight references
-    # the rewrite hasn't migrated yet.
-    return nil unless Phrase.where(slug: slug.to_s).exists? ||
-                      GreetingCatalog::ALL_SLUGS.include?(slug.to_s)
-    tone = tenant.greeting_tone
-    return nil unless GreetingCatalog::TONE_SLUGS.include?(tone.to_s)
-
-    if voice.present?
-      url = audio_url_for_voice(slug: slug, voice: voice, tone: tone, language: language)
-      return url if url
-      return audio_url_for_voice(slug: slug, voice: tenant.greeting_voice, tone: tone, language: language)
-    end
-
-    # 1. Rotation (when enabled). The rotation list can mix Kokoro voice
-    # ids and the cloned-voice _t<id>; both are handled by audio_url_for_voice.
-    if tenant.voice_rotation_ready?
-      rotated = tenant.next_rotated_voice!
-      url = audio_url_for_voice(slug: slug, voice: rotated, tone: tone, language: language)
-      return url if url
-      # Fall through if the rotated voice has no file rendered yet.
-    end
-
-    # 2. Cloned-voice path
-    if tenant.voice_clone_ready?
-      url = audio_url_for_voice(slug: slug, voice: tenant.cloned_voice_dir, tone: tone, language: language)
-      return url if url
-    end
-
-    # 3. Default Kokoro voice (gender-matched to language)
-    audio_url_for_voice(slug: slug, voice: tenant.greeting_voice, tone: tone, language: language)
-  end
-
-  # Returns a public URL for one specific (slug, voice, tone) combo if
-  # the rendered file exists. Handles both Kokoro voices (where the
-  # voice id encodes language) and cloned voices (where language is
-  # encoded in the tone filename suffix).
-  def audio_url_for_voice(slug:, voice:, tone:, language: nil)
-    return nil if voice.blank?
-    voice_str = voice.to_s
-
-    if voice_str.start_with?("_t")
-      # Cloned voice — language is encoded in the filename suffix.
-      effective_voice = voice_str
-      effective_tone  = (language && language != "it") ? "#{tone}_en" : tone
-    else
-      # Kokoro voice — auto-swap to language equivalent.
-      effective_voice = language ? GreetingCatalog.voice_for_language(voice_str, language) : voice_str
-      effective_tone  = tone
-      return nil unless Setting::ALLOWED_VOICES.include?(effective_voice)
-    end
-
-    # Degrade to TTS (return nil) rather than letting path_for raise on a blank/
-    # unsafe component — e.g. a tenant with a blank greeting_tone reaching this
-    # via play_spam_response_audio. Keeps a dropped/blank value off the hot path.
-    return nil unless [ slug, effective_voice, effective_tone ].all? { |c| GreetingsStorage.safe_component?(c) }
-    return nil unless GreetingsStorage.path_for(slug, effective_voice, effective_tone).exist?
-    url = "#{ENV.fetch('APP_DOMAIN', 'https://phone.example.com')}/greetings/#{slug}/#{effective_voice}/#{effective_tone}.wav"
-    # Cloned-voice greetings are served only with a valid signature so the
-    # operator's voice WAVs aren't publicly harvestable (see GreetingSignature).
-    if effective_voice.start_with?("_t")
-      sig = GreetingSignature.encode(slug: slug, voice: effective_voice, tone: effective_tone)
-      url = "#{url}?sig=#{CGI.escape(sig)}"
-    end
-    url
-  end
 
   def cc_client
     @cc_client ||= CallControlClient.new
