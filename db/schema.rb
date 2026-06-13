@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_13_020000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_13_030000) do
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "actor_id"
@@ -64,6 +64,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_020000) do
     t.index ["tenant_id", "flow_state"], name: "index_calls_on_tenant_id_and_flow_state"
     t.index ["tenant_id", "unattributed"], name: "index_calls_on_tenant_id_and_unattributed"
     t.index ["tenant_id"], name: "index_calls_on_tenant_id"
+    t.check_constraint "flow_state IN ('initiated', 'answered', 'screening_prompt_playing', 'screening_recording', 'recording', 'transfer_dialing', 'bridged', 'hanging_up_after_speak', 'spam_disclose_playing', 'troll_playing', 'done')", name: "calls_flow_state_valid"
+    t.check_constraint "status >= 0 AND status <= 9", name: "calls_status_range"
   end
 
   create_table "contact_phrases", force: :cascade do |t|
@@ -131,6 +133,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_020000) do
     t.index ["tenant_id", "render_status", "time_of_day", "day_of_week"], name: "index_phrases_on_resolver_predicate"
     t.index ["tenant_id", "slug"], name: "index_phrases_on_tenant_id_and_slug", unique: true
     t.index ["tenant_id"], name: "index_phrases_on_tenant_id"
+    t.check_constraint "day_of_week IN ('any', 'weekday', 'weekend', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')", name: "phrases_day_of_week_valid"
+    t.check_constraint "kind IN ('user', 'system_clarify', 'system_voicemail_prompt', 'system_goodbye_spam', 'system_goodbye_short', 'system_no_answer', 'system_spam_disclose', 'system_troll_intro', 'system_troll_hold_loop', 'system_troll_voice_menu', 'system_troll_apology', 'system_troll_disclose')", name: "phrases_kind_valid"
+    t.check_constraint "render_status IN ('pending', 'rendering', 'rendered', 'failed')", name: "phrases_render_status_valid"
+    t.check_constraint "time_of_day IN ('any', 'morning', 'afternoon', 'evening', 'night')", name: "phrases_time_of_day_valid"
   end
 
   create_table "rules", force: :cascade do |t|
@@ -241,22 +247,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_020000) do
     t.index ["reset_password_token"], name: "index_tenants_on_reset_password_token", unique: true
     t.index ["slug"], name: "index_tenants_on_slug", unique: true
     t.index ["unlock_token"], name: "index_tenants_on_unlock_token", unique: true
+    t.check_constraint "(tod_morning_hour IS NULL OR (tod_morning_hour >= 0 AND tod_morning_hour <= 23)) AND (tod_afternoon_hour IS NULL OR (tod_afternoon_hour >= 0 AND tod_afternoon_hour <= 23)) AND (tod_evening_hour IS NULL OR (tod_evening_hour >= 0 AND tod_evening_hour <= 23)) AND (tod_night_hour IS NULL OR (tod_night_hour >= 0 AND tod_night_hour <= 23))", name: "tenants_tod_hours_range"
+    t.check_constraint "auto_blacklist_threshold IS NULL OR auto_blacklist_threshold >= 1", name: "tenants_auto_blacklist_threshold_positive"
+    t.check_constraint "spam_sensitivity IS NULL OR (spam_sensitivity >= 0.0 AND spam_sensitivity <= 1.0)", name: "tenants_spam_sensitivity_range"
   end
 
   add_foreign_key "audit_logs", "tenants"
   add_foreign_key "audit_logs", "tenants", column: "actor_id"
-  add_foreign_key "calls", "contacts"
+  add_foreign_key "calls", "contacts", on_delete: :nullify
   add_foreign_key "calls", "tenants"
-  add_foreign_key "contact_phrases", "contacts"
-  add_foreign_key "contact_phrases", "phrases"
-  add_foreign_key "contact_tags", "contacts"
-  add_foreign_key "contact_tags", "tags"
+  add_foreign_key "contact_phrases", "contacts", on_delete: :cascade
+  add_foreign_key "contact_phrases", "phrases", on_delete: :cascade
+  add_foreign_key "contact_tags", "contacts", on_delete: :cascade
+  add_foreign_key "contact_tags", "tags", on_delete: :cascade
   add_foreign_key "contacts", "tenants"
-  add_foreign_key "phrase_tags", "phrases"
-  add_foreign_key "phrase_tags", "tags"
+  add_foreign_key "phrase_tags", "phrases", on_delete: :cascade
+  add_foreign_key "phrase_tags", "tags", on_delete: :cascade
   add_foreign_key "phrases", "tenants"
   add_foreign_key "rules", "tenants"
   add_foreign_key "tags", "tenants"
-  add_foreign_key "tenant_phrases", "phrases"
-  add_foreign_key "tenant_phrases", "tenants"
+  add_foreign_key "tenant_phrases", "phrases", on_delete: :cascade
+  add_foreign_key "tenant_phrases", "tenants", on_delete: :cascade
 end
