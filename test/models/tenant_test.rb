@@ -210,4 +210,53 @@ class TenantTest < ActiveSupport::TestCase
     @default.auto_blacklist_threshold = nil
     assert @default.valid?, @default.errors.full_messages.to_sentence
   end
+
+  # === SEC-1: deactivated tenants cannot authenticate ===
+
+  test "active_for_authentication? is false when the tenant is deactivated" do
+    @other.update_columns(active: false)
+    refute @other.active_for_authentication?
+    assert_equal :inactive, @other.inactive_message
+  end
+
+  test "active_for_authentication? is true for an active tenant" do
+    assert @default.active?
+    assert @default.active_for_authentication?
+  end
+
+  # === SEC-2: ntfy_url SSRF validation ===
+
+  test "ntfy_url allows blank and the 'disabled' sentinel" do
+    @default.ntfy_url = ""
+    assert @default.valid?, @default.errors.full_messages.to_sentence
+    @default.ntfy_url = "disabled"
+    assert @default.valid?, @default.errors.full_messages.to_sentence
+  end
+
+  test "ntfy_url allows a public https URL and a bare public hostname" do
+    @default.ntfy_url = "https://ntfy.sh/my-topic"
+    assert @default.valid?, @default.errors.full_messages.to_sentence
+    @default.ntfy_url = "https://ntfy.example.com/topic"
+    assert @default.valid?, @default.errors.full_messages.to_sentence
+  end
+
+  test "ntfy_url rejects loopback, private, link-local, and metadata IP literals" do
+    %w[
+      http://127.0.0.1/x
+      http://169.254.169.254/latest/meta-data/
+      https://10.0.0.5/topic
+      http://192.168.1.10/topic
+      https://[::1]/topic
+    ].each do |bad|
+      @default.ntfy_url = bad
+      refute @default.valid?, "#{bad} must be rejected"
+      assert @default.errors[:ntfy_url].any?, "#{bad} should add an ntfy_url error"
+    end
+  end
+
+  test "ntfy_url rejects a non-http(s) scheme" do
+    @default.ntfy_url = "ftp://example.com/x"
+    refute @default.valid?
+    assert @default.errors[:ntfy_url].any?
+  end
 end

@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 require_relative "e2e_helper"
 
 class PerContactPoolTest < E2ETest

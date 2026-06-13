@@ -1,3 +1,5 @@
+require "ipaddr"
+
 class Tenant < ApplicationRecord
   include RotatingCursor
 
@@ -68,6 +70,7 @@ class Tenant < ApplicationRecord
   validate :voice_clone_active_requires_consent_and_sample
   validate :tod_hours_in_range_and_monotonic
   validate :time_zone_is_resolvable
+  validate :ntfy_url_safe
 
   before_validation :default_forward_back_to_mobile, on: :create
 
@@ -83,6 +86,19 @@ class Tenant < ApplicationRecord
 
   def super_admin?
     admin
+  end
+
+  # Devise hook: a deactivated tenant (active=false) cannot authenticate. The
+  # super-admin "Active" toggle was previously cosmetic — unticking it left the
+  # tenant with full login + access to their own caller PII (a GDPR exposure).
+  # `super` chains the lockable/timeoutable checks so those still apply. The
+  # column is NOT NULL default true, so existing tenants are unaffected.
+  def active_for_authentication?
+    super && active?
+  end
+
+  def inactive_message
+    active? ? super : :inactive
   end
 
   def display_name
@@ -195,6 +211,41 @@ class Tenant < ApplicationRecord
     return if time_zone.blank?
     return if Time.find_zone(time_zone)
     errors.add(:time_zone, "is not a recognized time zone")
+  end
+
+  # ntfy_url is tenant-controlled (set from the profile form) and the NotifyJob
+  # worker POSTs to it server-side — a blind SSRF / internal-probe vector if
+  # left unchecked. Allow blank (ENV fallback) and the "disabled" sentinel.
+  # Otherwise require an http(s) URL whose host is not an IP literal in a
+  # private / loopback / link-local range (the cloud-metadata + internal-service
+  # probe vectors). A bare hostname is allowed — operators legitimately point at
+  # self-hosted ntfy on public domains.
+  def ntfy_url_safe
+    raw = ntfy_url.to_s.strip
+    return if raw.blank? || raw == "disabled"
+
+    uri = begin
+      URI.parse(raw)
+    rescue URI::InvalidURIError
+      nil
+    end
+    unless uri.is_a?(URI::HTTP) && uri.host.present?
+      errors.add(:ntfy_url, "must be a valid http(s) URL or 'disabled'")
+      return
+    end
+    if ip_literal_private?(uri.host)
+      errors.add(:ntfy_url, "must not point to a private, loopback, or link-local address")
+    end
+  end
+
+  def ip_literal_private?(host)
+    ip = begin
+      IPAddr.new(host.delete_prefix("[").delete_suffix("]"))
+    rescue IPAddr::InvalidAddressError
+      nil
+    end
+    return false if ip.nil? # a hostname, not an IP literal
+    ip.loopback? || ip.private? || ip.link_local?
   end
 
   def tod_hours_in_range_and_monotonic

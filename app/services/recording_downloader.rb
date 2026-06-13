@@ -58,15 +58,22 @@ class RecordingDownloader
 
     response =
       begin
-        HTTParty.get(@call.recording_url, headers: headers, timeout: 60)
+        # follow_redirects: false — the host allowlist above only validates the
+        # ORIGINAL URL. HTTParty follows redirects by default, so a trusted-host
+        # 30x to an internal target (cloud metadata IP, sidecars) would be
+        # followed AND re-send the Telnyx bearer header on the cross-host hop —
+        # an SSRF + credential-leak path. A redirect is treated as a hard
+        # failure below instead.
+        HTTParty.get(@call.recording_url, headers: headers, timeout: 60, follow_redirects: false)
       rescue Net::OpenTimeout, Net::ReadTimeout, SocketError, Errno::ECONNREFUSED, Errno::ECONNRESET => e
         raise TransientError, "#{e.class}: #{e.message}"
       end
 
     unless response.success?
       code = response.code.to_i
-      # 5xx / 429 are transient (Telnyx or S3 hiccup) → retryable. Other 4xx
-      # responses are permanent (expired URL, gone) and stay a hard failure.
+      # 5xx / 429 are transient (Telnyx or S3 hiccup) → retryable. A 3xx is an
+      # un-followed redirect (see above) and any other 4xx (expired URL, gone)
+      # are permanent → hard failure, not retried.
       raise TransientError, "Download failed: HTTP #{code}" if code >= 500 || code == 429
       raise "Download failed: HTTP #{code}"
     end

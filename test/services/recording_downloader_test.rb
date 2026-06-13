@@ -69,4 +69,21 @@ class RecordingDownloaderTest < ActiveSupport::TestCase
     err = assert_raises(RuntimeError) { RecordingDownloader.fetch(@call) }
     assert_not_kind_of RecordingDownloader::TransientError, err
   end
+
+  # --- SSRF via redirect (SEC-3) ---
+
+  test "does not follow redirects; a 30x from a trusted host is a hard failure" do
+    # A trusted-host 302 → internal target must NOT be followed (that would
+    # re-send the Telnyx bearer header cross-host and reach internal services).
+    @call.update!(recording_url: "https://api.telnyx.com/v2/recordings/rec.wav")
+    internal = stub_request(:get, "http://169.254.169.254/latest/meta-data/")
+                 .to_return(status: 200, body: "SECRET")
+    stub_request(:get, @call.recording_url)
+      .to_return(status: 302, headers: { "Location" => "http://169.254.169.254/latest/meta-data/" })
+
+    err = assert_raises(RuntimeError) { RecordingDownloader.fetch(@call) }
+    assert_not_kind_of RecordingDownloader::TransientError, err, "a redirect is permanent, not retryable"
+    # The redirect target must never be fetched (no header re-send, no SSRF hop).
+    assert_not_requested internal
+  end
 end

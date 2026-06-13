@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="kb-category" content="plan">
+<meta name="kb-tags" content="status:applied, project:callscreen, severity:high, rails, telephony, reliability, security, i18n, code-review, roadmap">
+<title>Callscreen — Next-Step Roadmap (June 2026)</title>
+<style>
+:root{
+  --bg:#fbfbfa;--surface:#f3f3f1;--fg:#1b1b1a;--muted:#5f5f5c;
+  --rule:#d9d9d6;--accent:#3a5a9f;--accent-fg:#ffffff;
+  --warn:#8a5f00;--danger:#9a2f28;--ok:#256148;
+  --fs-body:1.0625rem;--fs-small:.85rem;--lh:1.6;--maxw:46rem;
+  --serif:ui-serif,Georgia,"Times New Roman",serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --radius:6px;--focus:2px solid var(--accent);
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#16171a;--surface:#1f2126;--fg:#e6e6e3;--muted:#a3a39e;
+    --rule:#2c2e33;--accent:#8fb0ee;--accent-fg:#11131a;
+    --warn:#e0b24d;--danger:#f08079;--ok:#6fcaa0;}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}
+}
+:focus-visible{outline:var(--focus);outline-offset:2px}
+.skip-link{position:absolute;left:-9999px;top:0;background:var(--fg);color:var(--bg);padding:.5rem 1rem;z-index:100;font:600 var(--fs-small)/1 var(--mono);text-transform:uppercase;letter-spacing:.05em;text-decoration:none}
+.skip-link:focus{left:.5rem;top:.5rem}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:var(--lh);font-size:var(--fs-body)}
+.artifact{max-width:var(--maxw);margin:0 auto;padding:3rem 1.25rem 6rem}
+h1,h2,h3{line-height:1.25;font-weight:650;scroll-margin-top:24px}
+h1{font-size:1.9rem;margin:.2em 0 .3em}
+h2{font-size:1.35rem;margin:2.2em 0 .6em;padding-top:.4em;border-top:1px solid var(--rule)}
+h3{font-size:1.1rem;margin:1.6em 0 .4em}
+p,li{font-family:var(--serif)}
+a{color:var(--accent);text-underline-offset:2px}
+a:focus-visible{outline:var(--focus);outline-offset:2px;border-radius:2px}
+.kicker{font-family:var(--sans);font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:.5ch}
+.kicker .dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--accent);display:inline-block}
+.kicker .sep,.meta-strip .sep{color:var(--rule)}
+.lede{font-family:var(--serif);font-size:1.18rem;margin:.4em 0 1em}
+.meta-strip{font-family:var(--sans);font-size:.82rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:.6ch;align-items:center;margin-bottom:1.5rem}
+.tag{font-family:var(--mono);font-size:.78rem;background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:.05em .45em}
+code{font-family:var(--mono);font-size:.88em;background:var(--surface);border-radius:4px;padding:.08em .35em}
+pre{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:1rem;overflow:auto;font-size:.85rem;line-height:1.5}
+pre code{background:none;padding:0}
+blockquote{margin:1em 0;padding:.2em 1em;border-left:3px solid var(--rule);color:var(--muted)}
+table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:.9rem;margin:1em 0}
+th,td{border:1px solid var(--rule);padding:.5em .7em;text-align:left;vertical-align:top}
+th{background:var(--surface);font-weight:600}
+.callout{font-family:var(--serif);border:1px solid var(--rule);border-left:4px solid var(--accent);border-radius:var(--radius);background:color-mix(in srgb,var(--accent) 7%,var(--bg));padding:.8em 1em;margin:1.2em 0}
+.callout-label{font-family:var(--sans);font-weight:650;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:.3em}
+.callout--warn{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 9%,var(--bg))}
+.callout--warn .callout-label{color:var(--warn)}
+.callout--danger{border-left-color:var(--danger);background:color-mix(in srgb,var(--danger) 9%,var(--bg))}
+.callout--danger .callout-label{color:var(--danger)}
+.callout--ok{border-left-color:var(--ok);background:color-mix(in srgb,var(--ok) 9%,var(--bg))}
+.callout--ok .callout-label{color:var(--ok)}
+.pill{font-family:var(--mono);font-size:.72rem;border:1px solid var(--rule);border-radius:10px;padding:.02em .5em;white-space:nowrap}
+main:focus{outline:none}
+</style>
+<template id="kb-prompt">
+ROLE
+You are continuing the callscreen next-step roadmap in .
+(Rails 8.1 / Ruby 3.4.8, SQLite + Solid Queue, Telnyx Voice API, Whisper + Moonshot Kimi,
+ntfy). Branch `next-step-hardening` already landed 8 fixes (P0-1, P0-2, P0-4, P1-1, P1-2,
+P1-3, P1-5, P1-10): 472 tests green, brakeman 0, rubocop clean. This contract is the
+REMAINING work, in priority order.
+
+PRECONDITIONS (verify each)
+- bundle exec bin/rails test            -> "0 failures, 0 errors" (>=472 runs)
+- bundle exec brakeman -q               -> "No warnings found"
+- bundle exec rubocop                   -> "no offenses detected"
+
+STEPS (each must leave the three gates above green; add tests with each)
+1. P0-3 stuck-screening watchdog. Recurring job: Call.where(status: :screening) with
+   recording_url present, notified_at nil, age > 10 min -> ScreeningJob.perform_later
+   (idempotent via NotifyJob's atomic notified_at claim). Files: config/recurring.yml,
+   app/jobs/. verify: new job test + suite.
+2. P1-4 negative Telnyx events. Add when-branches in TelnyxController#voice for
+   call.recording.saved-failure / playback.failed / transfer failure -> fast
+   goodbye+hangup+ScreeningJob, or start_voicemail for transfer. Confirm exact event_type
+   strings against Telnyx docs first. verify: telnyx_controller_test.
+3. P1-6 aggregate watchdog ntfy. Recurring job reading SolidQueue::FailedExecution.count +
+   stuck-call/render counts over the last hour -> OPERATOR ntfy (bypass the 'disabled'
+   per-tenant opt-out). Optional daily cost rollup with spike threshold (Call::TOTAL_COST_SQL).
+4. P1-7 safety-mechanism tests (no new code, pure coverage of load-bearing guards):
+   TimedSubprocess timeout/non-zero-exit; controller always-200 with a raising collaborator
+   (swap the singleton method - minitest/mock is NOT bundled in minitest 6); rack_attack 429
+   past each limit (clear Rack::Attack.cache between tests); E2eInspector 401/cross-tenant-404/
+   fail-closed/redaction.
+5. P1-8 pre-deploy backup. Insert `./bin/rails db:backup` before db:prepare in
+   bin/docker-entrypoint, wrapped `|| echo warn` so it never fail-closes boot.
+6. P1-9 (operator, deploy-side). In compose.yml set the model default to
+   moonshot-v1-8k (or drop the :- default); log the configured model once at boot.
+7. P2 batch (see body for per-item detail): P2-1 extract CallFlow FSM + Playback +
+   VoiceSelector from TelnyxController (PRESERVE the atomic update_all CAS as a guarded
+   claim; land audio/voice/auth extractions first); P2-2 classifier learning loop; P2-3
+   voicemail TL;DR; P2-4 i18n + Italian locale; P2-5 graceful Whisper degradation +
+   STIR/SHAKEN; P2-6 analytics; P2-7 global spam auto-report (async); P2-8 CHECK/FK
+   migration (db:backup FIRST, one maintenance-window migration); P2-9 empty states;
+   P2-10 pin Python TTS + harden Whisper sidecar (build-env + operator-side compose).
+8. P3 polish/cleanup (see body): dual-catalog authority, write-side domain objects, CSP
+   strictening, a11y pass, dead-code sweep, second-tier DRY, coverage/CI hardening, schema
+   cleanups, strategic-ceiling features.
+
+POSTCONDITIONS
+- Three gates green after every step; new behavior is tested.
+- No secrets in code/logs; all admin reads stay tenant-scoped via viewing_tenant.*.
+
+ROLLBACK
+- Each step is an isolated commit; `git revert <sha>` or drop the branch.
+- P2-8 migration: restore from the db:backup taken immediately prior (SQLite has no DDL rollback).
+
+SEE BODY FOR
+Per-item why/approach/files/effort/risk, the 10-dimension health table, what already
+shipped, and the 5 strategic bets that define the product's next chapter.
+</template>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<main id="main">
+<article class="artifact">
+<header>
+  <div class="kicker"><span class="dot"></span>plan <span class="sep">&middot;</span> callscreen</div>
+  <h1>Callscreen — Next-Step Roadmap (June 2026)</h1>
+  <p class="lede">A healthy, deployed product (nine of ten review dimensions "solid", 472 tests green): the next chapter is to close the remaining call-flow reliability holes, land the deferred ops/supply-chain hardening, and make the product smarter and actually Italian.</p>
+  <div class="meta-strip">
+    <span>2026-06-13</span>
+    <span class="sep">&middot;</span>
+    <span class="tag">status:applied</span>
+    <span class="sep">&middot;</span>
+    <span class="tag">project:callscreen</span>
+    <span class="sep">&middot;</span>
+    <span class="tag">80 verified findings</span>
+  </div>
+</header>
+
+<section>
+<h2 id="executive-assessment">Executive assessment</h2>
+<p>Callscreen is a genuinely healthy, deployed product. The May-2026 multi-view review's entire P0–P3 roadmap landed and held — verified in the current code: atomic <code>flow_state</code> claims, durable throttles, CSP, a DB-aware healthcheck, runtime FKs, and 461 (now 472) green tests. The core screen → Whisper → Kimi → ntfy flow is well-tested and operationally honest.</p>
+<p>This review is therefore not a debt cleanup but a <em>forward</em> step. It surfaces three things worth acting on: a small cluster of real reliability gaps at the call-flow edges (a failed transfer strands the caller; a raising goodbye could drop a real caller with zero notification; aggregate alerting is absent); the still-open deferred items (Python supply-chain pinning, the unhealthchecked Whisper sidecar, DB CHECK/FK constraints); and the product's single biggest ceiling — it never learns from operator feedback and is 100% English despite being explicitly Italian-primary.</p>
+<p>The next chapter is two-pronged: <strong>(1)</strong> close the call-flow reliability holes and land the deferred ops/supply-chain hardening so the deployed system is bulletproof; then <strong>(2)</strong> make the product smarter and reach its actual audience — a feedback-driven classifier loop, voicemail TL;DR summaries, and Italian i18n. The highest-leverage architecture investment, extracting the call FSM and the audio/voice layer out of the 676-line <code>TelnyxController</code>, is the enabling refactor that makes both safer and testable.</p>
+</section>
+
+<section>
+<h2 id="shipped-this-pass">What already shipped this pass</h2>
+<div class="callout callout--ok"><span class="callout-label">Landed on branch next-step-hardening</span>
+Eight verified fixes, each with a regression test. Suite went 461 → <strong>472 runs, 0 failures</strong>; <strong>brakeman 0 warnings</strong>; <strong>rubocop clean</strong> (the CI lint gate was RED on main and is now green).</div>
+<table>
+<thead><tr><th>ID</th><th>Fix</th><th>Why it mattered</th></tr></thead>
+<tbody>
+<tr><td><span class="pill">P0-1</span></td><td>Enqueue <code>ScreeningJob</code> before the goodbye, guard the goodbye</td><td>A raising goodbye after the atomic recording claim could leave a real caller never classified or notified — the worst silent failure in the product.</td></tr>
+<tr><td><span class="pill">P0-2</span></td><td>Failed transfer falls back to voicemail</td><td><code>transfer_dialing</code> is excluded from the stuck-call sweep; a rejected transfer stranded the caller in dead air. Also fixed a latent prod crash: <code>Sentry.with_scope</code> raises when Sentry is uninitialised.</td></tr>
+<tr><td><span class="pill">P0-4</span></td><td><code>rubocop -a</code> — clear 8 RED CI offenses</td><td>The established lint gate was failing on main, masking future lint signal.</td></tr>
+<tr><td><span class="pill">P1-1</span></td><td>Enforce the tenant <code>active</code> flag at authentication</td><td>The super-admin "Active" toggle did nothing — a deactivated tenant kept full login + own-PII access (GDPR false-affordance).</td></tr>
+<tr><td><span class="pill">P1-2</span></td><td>Validate tenant <code>ntfy_url</code> (SSRF guard)</td><td>Authenticated blind SSRF: a tenant could point <code>ntfy_url</code> at internal hosts and the worker POSTed to it. Now rejects private/loopback/link-local IP literals.</td></tr>
+<tr><td><span class="pill">P1-3</span></td><td><code>follow_redirects: false</code> on recording downloads</td><td>The host allowlist was bypassable via a 30x redirect that re-sent the Telnyx bearer header cross-host (SSRF + credential leak).</td></tr>
+<tr><td><span class="pill">P1-5</span></td><td>Sentry on swallowed errors + <code>PhraseRenderJob</code> exhaustion</td><td><code>SpamClassifier</code> dropped exceptions to a message-less log; render failures reached no operator signal.</td></tr>
+<tr><td><span class="pill">P1-10</span></td><td><code>add_index :calls, [:contact_id, :created_at]</code></td><td>Backs the rate-limit COUNT that runs on every inbound call.</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2 id="dimension-health">Per-dimension health</h2>
+<p>Ten dimensions reviewed against the current code; each finding adversarially verified (false-positives and already-fixed items removed). Nine are "solid"; the lone outlier is the Italian-product/English-console mismatch.</p>
+<table>
+<thead><tr><th>Dimension</th><th>Health</th><th>Headline</th></tr></thead>
+<tbody>
+<tr><td>Security &amp; tenant isolation</td><td>solid</td><td>Strong trust boundary (Ed25519, <code>secure_compare</code>, consistent <code>viewing_tenant</code> scoping, no IDOR). Remaining were the SSRF/auth papercuts now fixed.</td></tr>
+<tr><td>Reliability &amp; idempotency</td><td>solid</td><td>Hardened async pipeline; remaining holes were at the call-flow edges (now P0-1/P0-2 done; P0-3/P1-4 open).</td></tr>
+<tr><td>Architecture</td><td>solid</td><td><code>TelnyxController</code> is a 676-line god-object with an unguarded string FSM scattered across 3 files — the next decomposition (P2-1).</td></tr>
+<tr><td>Performance &amp; cost</td><td>solid</td><td>Hot path is sound (only synchronous external call is railsdav, 1.5s-bounded). Second-order items only.</td></tr>
+<tr><td>Data model &amp; migrations</td><td>solid</td><td>FKs enforced, index hygiene landed. Open: zero CHECK constraints, FKs all RESTRICT with cascade carried in Ruby (P2-8).</td></tr>
+<tr><td>Test coverage</td><td>solid</td><td>Behavior-focused. Blind spots: TimedSubprocess, always-200, rack_attack, E2eInspector scoping (P1-7).</td></tr>
+<tr><td>Code quality</td><td>solid</td><td>A second tier of low-risk cleanups + dead TeXML-era remnants (P3-5/P3-6).</td></tr>
+<tr><td>Ops &amp; supply chain</td><td>solid</td><td>Open deferred bucket: unpinned Python TTS chain, unhealthchecked Whisper sidecar, no aggregate alerting (P1-6/P2-10).</td></tr>
+<tr><td>UI / UX / i18n / a11y</td><td><strong>needs-attention</strong></td><td>100% hardcoded-English admin console on an Italian-primary product; no empty states; a11y polish (P2-4/P2-9/P3-4).</td></tr>
+<tr><td>Product roadmap</td><td>solid</td><td>Differentiated core, but the system never learns from operator feedback (the strategic ceiling — SB-1/P2-2).</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2 id="p0-remaining">P0 — remaining call-flow reliability</h2>
+<p>Two P0s shipped this pass. One remains:</p>
+<table>
+<thead><tr><th>ID</th><th>Item</th><th>Approach</th><th>Effort</th></tr></thead>
+<tbody>
+<tr><td><span class="pill">P0-3</span></td><td>Stuck-screening reconciliation watchdog for lost <code>ScreeningJob</code> enqueues</td><td>Even with P0-1, a worker crash between the atomic claim and the enqueue leaves a call with <code>recording_url</code> present, <code>status :screening</code>, <code>notified_at</code> nil and no queued job — invisible to every existing watchdog. Add a recurring reconciliation (age &gt; ~10 min) that re-enqueues; idempotent via NotifyJob's atomic claim.</td><td>m / low</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2 id="p1-remaining">P1 — remaining security, reliability &amp; observability</h2>
+<p>Five P1s shipped. Remaining:</p>
+<table>
+<thead><tr><th>ID</th><th>Item</th><th>Approach</th><th>Effort</th></tr></thead>
+<tbody>
+<tr><td><span class="pill">P1-4</span></td><td>Handle negative Telnyx events</td><td>Recording/playback/transfer-failure events fall to the ignored <code>else</code> branch; recovery waits for the 10–15 min sweep. Add explicit <code>when</code>-branches issuing already-idempotent commands (fast goodbye+hangup+ScreeningJob, or <code>start_voicemail</code>). Confirm event-type strings vs Telnyx docs.</td><td>m / low</td></tr>
+<tr><td><span class="pill">P1-6</span></td><td>Aggregate watchdog alerting</td><td>Per-event Sentry exists but no aggregate signal. Recurring job reads <code>SolidQueue::FailedExecution.count</code> + stuck-call/render counts over the last hour → OPERATOR ntfy (bypassing the per-tenant <code>disabled</code> opt-out). Optional daily cost rollup with a spike threshold.</td><td>m / medium</td></tr>
+<tr><td><span class="pill">P1-7</span></td><td>Test the untested safety mechanisms</td><td>Zero coverage on <code>TimedSubprocess</code> timeout/kill, the controller's always-200 guarantee under a raising handler, rack_attack throttles, and E2eInspector cross-tenant scoping/redaction — a regression in any is silent. Pure test additions (use a singleton-method swap; <code>minitest/mock</code> is not bundled).</td><td>m / low</td></tr>
+<tr><td><span class="pill">P1-8</span></td><td>Pre-deploy backup gate</td><td><code>docker-entrypoint</code> runs <code>db:prepare</code> on every boot; the cron snapshot can be 24h stale and SQLite has no transactional DDL rollback. Insert a WAL-safe <code>db:backup</code> before migrations.</td><td>s / low</td></tr>
+<tr><td><span class="pill">P1-9</span></td><td>Match <code>MOONSHOT_MODEL</code> default + log at boot <em>(operator-side)</em></td><td>The compose <code>:-</code> default is the slow reasoning model, contradicting the documented latency choice; a config reset would silently put it on the caller-waiting hot path. Fix the compose default and log the configured model once at boot.</td><td>xs / none</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2 id="p2">P2 — architecture, product evolution &amp; data integrity</h2>
+<table>
+<thead><tr><th>ID</th><th>Item</th><th>Approach</th><th>Effort</th></tr></thead>
+<tbody>
+<tr><td><span class="pill">P2-1</span></td><td>Extract CallFlow FSM + Playback / VoiceSelector / Auth from <code>TelnyxController</code></td><td>Mirror the proven <code>CallPolicy</code> pattern. CallFlow PORO owning the transition graph (PRESERVE the atomic <code>update_all</code> CAS as a guarded claim); stateless <code>GreetingAudioResolver</code> + <code>Playback</code> service; <code>VoiceSelector</code>. Land the independent audio/voice/auth extractions first. Promote <code>flow_state</code> to <code>Call::FlowState</code> constants. The enabling refactor for reliability + testability.</td><td>l / medium</td></tr>
+<tr><td><span class="pill">P2-2</span></td><td>Classifier learning loop</td><td>Stage 1: <code>mark_spam</code> find-or-creates the Contact + injects a per-contact spam/legit ratio hint into the prompt. Stage 2: ≤5 per-tenant few-shot exemplars from AuditLog corrections joined to transcripts (disagreement-first), as prior turns. Compare against the stored <code>ai_classification</code> blob, not mere audit-row existence.</td><td>m / high</td></tr>
+<tr><td><span class="pill">P2-3</span></td><td>Voicemail TL;DR summaries</td><td>Add <code>summary</code> to the classify JSON schema; persist via the existing JSON blob (no migration); ntfy first line above the transcript. Bump <code>max_tokens</code> to ~256. Near-free — the LLM is already in the loop.</td><td>s / low</td></tr>
+<tr><td><span class="pill">P2-4</span></td><td>i18n foundation + Italian admin locale</td><td><code>default_locale=:it</code> + available_locales + fallbacks; <code>it.yml</code>/<code>en.yml</code> + <code>devise.it.yml</code>; <code>Tenant#admin_locale</code>; <code>set_locale</code> in BaseController; dynamic <code>&lt;html lang&gt;</code>; migrate ~29 views chrome → forms → Devise. The highest-leverage UX investment for the stated audience.</td><td>xl / medium</td></tr>
+<tr><td><span class="pill">P2-5</span></td><td>Graceful Whisper-outage degradation + STIR/SHAKEN</td><td>On terminal Whisper failure, finalise as a plain voicemail with a playback link + "trascrizione non disponibile" instead of <code>:failed</code>. Parse the Telnyx attestation/verstat field into a nullable Call column; feed as a <em>soft</em> CallPolicy input + prompt hint — never a hard block (carrier-forwarded calls strip it).</td><td>m / low</td></tr>
+<tr><td><span class="pill">P2-6</span></td><td>Screening-effectiveness &amp; spam-trend analytics</td><td>The data exists (<code>ai_classification_source</code>, <code>answered_at</code>, AuditLog corrections) for spam-rate trends, blocked-before-answer ratio, top spam callers, and LLM accuracy. Reuse the costs-page group-by patterns; accuracy feeds P2-2's calibration.</td><td>m / medium</td></tr>
+<tr><td><span class="pill">P2-7</span></td><td>Local <code>mark_spam</code> auto-contributes to the global reputation DB</td><td>The cross-tenant spam feed only gets signal if the operator taps a second button. On high-confidence local spam / auto-blacklist, auto-report to railsdav via a background job (NOT inline — the reporter is a synchronous POST). Per-tenant opt-in, default OFF; number-only payload.</td><td>m / medium</td></tr>
+<tr><td><span class="pill">P2-8</span></td><td>Deferred data-integrity batch: CHECK + ON DELETE FKs</td><td>Zero CHECK constraints today (all enum/range integrity is Ruby-only, bypassable by runner/seed/raw SQL). One backup-protected maintenance-window migration batching CHECKs + <code>ON DELETE CASCADE</code>/<code>SET NULL</code>. SQLite drives the table rebuild; tiny tables. Back up first; fails loudly on any violating row.</td><td>m / medium</td></tr>
+<tr><td><span class="pill">P2-9</span></td><td>Empty states + onboarding affordances</td><td>A fresh tenant lands on all-zero cards and headers-only tables with no next step; voice-clone tells a paying tenant to SSH and run a host command (stale — in-container render is canonical). Add empty states, an onboarding checklist, and enqueued-job clone status.</td><td>s / low</td></tr>
+<tr><td><span class="pill">P2-10</span></td><td>Pin the Python TTS supply chain + harden Whisper sidecar</td><td><code>uv pip compile --generate-hashes</code> → committed lockfile; <code>--require-hashes</code> sync in <code>tts_build</code>; pin uv, base-image digest, torch wheel. Compose (operator-side): <code>/health</code> healthcheck + <code>start_period</code> + <code>depends_on: service_healthy</code> + image digest pin.</td><td>m / medium</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2 id="p3">P3 — strategic polish &amp; cleanup</h2>
+<table>
+<thead><tr><th>ID</th><th>Item</th><th>Effort</th></tr></thead>
+<tbody>
+<tr><td><span class="pill">P3-1</span></td><td>Resolve the dual phrase-catalog authority (demote <code>GreetingCatalog</code> to seed-data; <code>phrase_text</code> queries the DB exclusively so a missing row surfaces a seed bug instead of being masked).</td><td>m / low</td></tr>
+<tr><td><span class="pill">P3-2</span></td><td>Extract write-side domain objects (<code>AutoBlacklistPolicy</code>, <code>CallIntake</code>) — the write-side counterpart to <code>CallPolicy</code>.</td><td>m / low</td></tr>
+<tr><td><span class="pill">P3-3</span></td><td>CSP hardening — migrate the 7 inline <code>onchange</code> handlers + SW to Stimulus and drop <code>script-src unsafe-inline</code>.</td><td>m / low</td></tr>
+<tr><td><span class="pill">P3-4</span></td><td>Accessibility pass — skip-link, <code>&lt;main&gt;</code> landmark, <code>aria-current</code>, <code>role=alert</code>/<code>aria-live</code> flashes, heatmap labels, <code>&lt;html lang&gt;</code>.</td><td>s / medium</td></tr>
+<tr><td><span class="pill">P3-5</span></td><td>Dead-code sweep — unreachable ntfy <code>mark_legit</code>, dead <code>transcription_engine</code> Setting, <code>clarify</code>/<code>no_answer</code> slugs, 5 legacy TeXML route aliases.</td><td>s / low</td></tr>
+<tr><td><span class="pill">P3-6</span></td><td>Second-tier DRY — <code>tts_python</code>, E.164 regex (4 files), confidence-pct, ntfy message builder, screening-timeout (3 places), <code>RETRYABLE</code> + terminal handler.</td><td>m / low</td></tr>
+<tr><td><span class="pill">P3-7</span></td><td>Coverage floor + CI hardening — wake SimpleCov (<code>minimum_coverage</code>), add a docker-build PR job + trivy/grype scan, pip-audit after P2-10.</td><td>m / low</td></tr>
+<tr><td><span class="pill">P3-8</span></td><td>Minor schema/cursor/preview cleanups — dead <code>contact_phrases.position</code>, partial <code>mobile_number</code> index, RotatingCursor modulus, phrase-preview tone mismatch.</td><td>s / low</td></tr>
+<tr><td><span class="pill">P3-9</span></td><td>Strategic-ceiling features — DTMF callback scheduling, secondary (SMS/email) notification channel, self-service onboarding + usage metering. Implement only behind a real driver.</td><td>l / low</td></tr>
+</tbody>
+</table>
+</section>
+
+<section>
+<h2 id="strategic-bets">Strategic bets — the product's next chapter</h2>
+<p>Five bets, larger than the tier items, that most move the product forward. The first two are the true differentiators; the third is the enabler.</p>
+<h3 id="sb-1-learning-loop">SB-1 · Feedback-driven classifier learning loop <span class="pill">m</span></h3>
+<p>The single highest-leverage product gap: <strong>the system never learns</strong>. Operator whitelist/spam/legit feedback only flips Contact flags and writes audit rows; nothing reaches the classifier. Mark the same telemarketer spam ten times and call eleven is classified from scratch. Worse, manual <code>mark_spam</code> doesn't even feed the auto-blacklist heuristic — the highest-signal case (LLM said legit, operator overrode) contributes nothing. Closing this loop turns every correction into durable intelligence.</p>
+<h3 id="sb-2-italian-i18n">SB-2 · Real i18n — make the Italian-primary product actually Italian <span class="pill">xl</span></h3>
+<p>The clearest mismatch between positioning and reality: an explicitly Italian-primary product ships a 100% hardcoded-English admin console (<code>en.yml</code> is still the Rails scaffold; no <code>it.yml</code>, no <code>default_locale</code>) plus unstyled English Devise auth screens. The Italian operator is the end-user. Highest UX leverage for the stated audience.</p>
+<h3 id="sb-3-fsm-extraction">SB-3 · Extract the call FSM + audio/voice/auth layers <span class="pill">l</span></h3>
+<p><code>TelnyxController</code> is a 676-line god-object whose FSM is an unguarded string column with transitions scattered across three files and three hand-maintained subsets that can silently diverge. This is the enabling refactor — it makes the reliability fixes and FSM guards directly unit-testable and shrinks future-bug surface. The audio/voice/auth extractions are independent and can land first to lower risk.</p>
+<h3 id="sb-4-ops-hardening">SB-4 · Land the deferred ops &amp; supply-chain hardening <span class="pill">m</span></h3>
+<p>The operational soft underbelly of an otherwise-bulletproof deploy: an unhealthchecked Whisper sidecar on <code>:latest</code>, an entirely unpinned Python TTS chain (non-reproducible builds), and no aggregate signal when sweeps fire repeatedly or the dead set grows. A systemic problem currently produces only log lines no one watches. (Combines P1-6 + P2-10 + P1-8.)</p>
+<h3 id="sb-5-resilience">SB-5 · Graceful Whisper-outage degradation + STIR/SHAKEN attestation <span class="pill">m</span></h3>
+<p>Two compounding resilience steps. A Whisper outage today marks a real caller <code>:failed</code> with no listen link though the recording exists — should degrade to a plain voicemail. Separately, Telnyx delivers STIR/SHAKEN attestation free in the webhook; consuming it gives a cheap anti-spoofing signal aligned with this product's exact threat model (Italian mobile-prefix spoofing) — as a soft input, never a hard block.</p>
+</section>
+
+<section>
+<h2 id="method">Method &amp; provenance</h2>
+<p>Ten specialised reviewers fanned out across the codebase (security, reliability, architecture, performance, data model, tests, code quality, ops/supply-chain, UI/UX/i18n/a11y, product). Each finding was adversarially verified against the actual code by an independent skeptic — false-positives and already-fixed items were dropped — yielding 80 retained findings, then synthesised into this roadmap. Effort scale: xs &lt; s &lt; m &lt; l &lt; xl. This builds on, and does not re-report, the <a href="callscreen-multiview-review-2026-05-29.html">May 2026 multi-view review</a>, whose P0–P3 roadmap is fully shipped.</p>
+<div class="callout"><span class="callout-label">Verification baseline</span>The eight applied fixes were validated together: <code>bundle exec bin/rails test</code> (472 runs, 0 failures, 0 errors), <code>bundle exec brakeman -q</code> (0 warnings), <code>bundle exec rubocop</code> (no offenses). Work landed on branch <code>next-step-hardening</code>.</div>
+</section>
+
+</article>
+</main>
+</body>
+</html>

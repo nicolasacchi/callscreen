@@ -999,6 +999,55 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  # === P0-1 / REL-2: a failing goodbye must never block classification ===
+
+  test "recording.saved still enqueues ScreeningJob when the cosmetic goodbye raises" do
+    seed_call(flow_state: "screening_recording")
+    # Force play_goodbye to blow up (stands in for a SQLite busy error in
+    # pick_voice_for_call! under contention) by making its first call raise.
+    # The classification enqueue is the load-bearing work and must survive; we
+    # must still ACK 200. (minitest/mock isn't bundled here, so swap the
+    # singleton method directly.)
+    original = LanguageResolver.method(:for)
+    LanguageResolver.define_singleton_method(:for) { |_call| raise "boom" }
+    begin
+      assert_enqueued_jobs 1, only: ScreeningJob do
+        post_event recording_saved_payload(url: "https://api.telnyx.com/v2/recordings/abc.wav")
+      end
+      assert_response :success
+    ensure
+      LanguageResolver.define_singleton_method(:for, original)
+    end
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal "hanging_up_after_speak", call.flow_state
+    assert_equal "https://api.telnyx.com/v2/recordings/abc.wav", call.recording_url
+  end
+
+  # === P0-2 / REL-1: a failed transfer must fall back to voicemail ===
+
+  test "failed transfer falls back to voicemail instead of stranding the caller in transfer_dialing" do
+    @tenant.update!(forward_back_number: "+393990000001")
+    @tenant.contacts.create!(phone: CALLER_FROM, whitelisted: true)
+    # Telnyx rejects the transfer command (e.g. invalid destination → 422).
+    failed_transfer = stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/transfer")
+                        .to_return(status: 422, body: '{"errors":[{"detail":"bad"}]}',
+                                   headers: { "Content-Type" => "application/json" })
+    # Voicemail prompt plays via speak or playback_start depending on whether a
+    # rendered WAV exists; record_start always fires once voicemail is reached.
+    stub_action(CCID, :speak)
+    stub_action(CCID, :playback_start)
+    record_stub = stub_action(CCID, :record_start)
+
+    post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+
+    assert_requested failed_transfer
+    # A failed transfer must fall through to voicemail capture, not strand the leg.
+    assert_requested record_stub
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal "recording", call.flow_state, "must not be left stranded in transfer_dialing"
+    assert_equal "recording", call.status
+  end
+
   private
 
   def seed_call(flow_state:, contact: nil, screening_transcript: nil, status: :screening,

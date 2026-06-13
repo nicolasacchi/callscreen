@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
+
 #
 # CLI wrapper around lib/synthetic_call.rb. Posts the canonical Telnyx
 # event sequence against /telnyx/voice on a target server, optionally

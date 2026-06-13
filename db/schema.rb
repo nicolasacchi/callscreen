@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_30_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_13_000000) do
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "actor_id"
@@ -57,7 +57,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_30_000000) do
     t.text "voicemail_transcript"
     t.index ["call_control_id"], name: "index_calls_on_call_control_id", unique: true
     t.index ["call_sid"], name: "index_calls_on_call_sid", unique: true
-    t.index ["contact_id"], name: "index_calls_on_contact_id"
+    t.index ["contact_id", "created_at"], name: "index_calls_on_contact_id_and_created_at"
     t.index ["created_at"], name: "index_calls_on_created_at"
     t.index ["tenant_id", "created_at"], name: "index_calls_on_tenant_id_and_created_at"
     t.index ["tenant_id", "flow_state"], name: "index_calls_on_tenant_id_and_flow_state"

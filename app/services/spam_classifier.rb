@@ -32,7 +32,11 @@ class SpamClassifier
     Rails.logger.error("SpamClassifier timeout: #{e.message}")
     uncertain("LLM timeout")
   rescue => e
-    Rails.logger.error("SpamClassifier error: #{e.class}")
+    # An unexpected classifier error degrades a real caller to "uncertain"
+    # silently — surface it (with the message) so a persistent breakage (bad
+    # key, API change) is visible, not just a log line that drops e.message.
+    Rails.logger.error("SpamClassifier error: #{e.class}: #{e.message}")
+    Sentry.capture_exception(e) if defined?(Sentry)
     uncertain("Classification error")
   end
 

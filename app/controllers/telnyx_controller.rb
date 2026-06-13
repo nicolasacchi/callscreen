@@ -211,8 +211,19 @@ class TelnyxController < ApplicationController
       # goodbye and hang up on speak.ended (hanging_up_after_speak branch).
       # Classification continues async in ScreeningJob.
       call.reload
-      play_goodbye(call, phrase: "goodbye_spam")
+      # Enqueue classification FIRST — it is the load-bearing work. The goodbye
+      # is cosmetic, but it can raise (e.g. a SQLite busy error in
+      # pick_voice_for_call!'s update_columns under contention). If it raised
+      # before the enqueue, a real caller would be screened, hung up on, and
+      # NEVER classified or notified — the worst silent failure in the product.
+      # So enqueue, then play the goodbye inside a guard that can't block it.
       ScreeningJob.perform_later(call.id)
+      begin
+        play_goodbye(call, phrase: "goodbye_spam")
+      rescue StandardError => e
+        Rails.logger.error("play_goodbye failed for call #{call.id}: #{e.class}: #{e.message}")
+        Sentry.capture_exception(e) if defined?(Sentry)
+      end
     elsif Call.where(id: call.id, flow_state: "recording")
               .update_all(attrs.merge(status: Call.statuses[:completed], flow_state: "done")).positive?
       # Legacy whitelisted-voicemail path (greeting + record, no screening).
@@ -509,10 +520,18 @@ class TelnyxController < ApplicationController
 
   def forward_or_record(call, tenant)
     target = tenant.forward_back_number.presence || ENV["FORWARD_NUMBER"]
-    if target.present?
+    return start_voicemail(call) if target.blank?
+
+    # Only commit to transfer_dialing once Telnyx accepts the transfer. The
+    # stuck-call sweep deliberately skips transfer_dialing (a bridged leg fires
+    # no events), so a silently-failed transfer left in that state would strand
+    # the caller in indefinite dead air. On failure, fall back to voicemail so
+    # they can still leave a message.
+    if cc_client.transfer(call.call_control_id, to: target, timeout_secs: 15)[:ok]
       call.update!(flow_state: "transfer_dialing")
-      cc_client.transfer(call.call_control_id, to: target, timeout_secs: 15)
     else
+      Rails.logger.warn("transfer to #{target} failed for call #{call.id}; falling back to voicemail")
+      Sentry.capture_message("Call transfer command failed; fell back to voicemail (call #{call.id})") if defined?(Sentry)
       start_voicemail(call)
     end
   end

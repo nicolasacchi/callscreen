@@ -17,7 +17,20 @@ class PhraseRenderJob < ApplicationJob
 
   queue_as :rendering
   discard_on ActiveRecord::RecordNotFound
-  retry_on StandardError, attempts: 3, wait: :polynomially_longer
+
+  # On final exhaustion, surface the failure (Sentry) and pin the phrase to
+  # render_status "failed" so a tenant's silently-broken greeting render leaves
+  # an operator signal beyond the per-attempt log line. Mirrors the
+  # VoiceCloneRenderJob exhaustion handler.
+  retry_on StandardError, attempts: 3, wait: :polynomially_longer do |job, error|
+    phrase_id = job.arguments.first
+    Rails.logger.error("PhraseRenderJob giving up phrase #{phrase_id}: #{error.class}: #{error.message}")
+    Sentry.capture_exception(error) if defined?(Sentry)
+    Phrase.where(id: phrase_id).update_all(
+      render_status: "failed",
+      last_render_error: "#{error.class}: #{error.message.to_s.first(500)}"
+    )
+  end
 
   TONES = %w[natural slow].freeze
   RENDER_TIMEOUT_SECS = 180
