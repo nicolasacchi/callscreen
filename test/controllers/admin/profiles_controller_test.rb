@@ -39,6 +39,17 @@ module Admin
       assert_equal "warm", @tenant.greeting_variant
     end
 
+    test "update can toggle auto_report_spam_globally (P2-7 opt-in)" do
+      refute @tenant.auto_report_spam_globally
+      patch admin_profile_url, params: { tenant: { auto_report_spam_globally: "1" } }
+      assert @tenant.reload.auto_report_spam_globally
+    end
+
+    test "update rejects an invalid ntfy_url pointing at a private host (SSRF guard)" do
+      patch admin_profile_url, params: { tenant: { ntfy_url: "http://169.254.169.254/x" } }
+      assert_response :unprocessable_content
+    end
+
     test "update rejects an invalid mobile_number" do
       patch admin_profile_url, params: {
         tenant: { mobile_number: "not-a-number" }

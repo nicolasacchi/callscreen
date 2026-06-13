@@ -23,6 +23,15 @@
   <% end %>
 </div>
 
+<% if @calls.none? %>
+  <div class="empty-state">
+    <% if params[:q].present? || params[:status].present? %>
+      No calls match this filter.
+    <% else %>
+      No calls yet. Screened calls will appear here once your number starts forwarding to Telnyx.
+    <% end %>
+  </div>
+<% else %>
 <table>
   <thead>
     <tr>
@@ -61,6 +70,7 @@
     <% end %>
   </tbody>
 </table>
+<% end %>
 
 <% if @pagination && @pagination[:total_pages] > 1 %>
   <div class="pagination">

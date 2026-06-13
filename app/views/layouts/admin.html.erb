@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<%= I18n.locale %>">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -70,6 +70,12 @@
     .badge-failed { background: rgba(239, 68, 68, 0.15); color: var(--spam); }
     .badge-initiated, .badge-recording { background: rgba(139, 143, 163, 0.15); color: var(--text-muted); }
     .badge-unknown { background: rgba(139, 143, 163, 0.15); color: var(--text-muted); }
+    .badge-voicemail { background: rgba(99, 102, 241, 0.15); color: var(--primary); }
+
+    .skip-link { position: absolute; left: -9999px; top: 0; background: var(--primary); color: #fff; padding: 0.5rem 1rem; z-index: 100; border-radius: 0 0 6px 0; }
+    .skip-link:focus { left: 0; }
+    .empty-state { padding: 2rem 1rem; text-align: center; color: var(--text-muted); background: var(--surface); border: 1px dashed var(--border); border-radius: 8px; }
+    .nav a[aria-current="page"], .sidebar nav a[aria-current="page"] { color: var(--text); background: var(--border); }
 
     .btn { display: inline-block; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.875rem; font-weight: 500; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
     .btn:hover { background: var(--border); color: var(--text); }
@@ -137,22 +143,23 @@
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <div class="layout">
     <div class="sidebar">
       <h2>Call Screener</h2>
-      <nav>
-        <%= link_to "Dashboard", admin_root_path, class: ("active" if controller_path == "admin/dashboard") %>
-        <%= link_to "Calls", admin_calls_path, class: ("active" if controller_path == "admin/calls") %>
-        <%= link_to "Recordings", admin_recordings_path, class: ("active" if controller_path == "admin/recordings") %>
-        <%= link_to "Contacts", admin_contacts_path, class: ("active" if controller_path == "admin/contacts") %>
-        <%= link_to "Phrases", admin_phrases_path, class: ("active" if controller_path == "admin/phrases") %>
-        <%= link_to "Tags", admin_tags_path, class: ("active" if controller_path == "admin/tags") %>
-        <%= link_to "Rules", admin_rules_path, class: ("active" if controller_path == "admin/rules") %>
-        <%= link_to "Profile", admin_profile_path, class: ("active" if controller_path == "admin/profiles") %>
-        <%= link_to "Costs", admin_costs_path, class: ("active" if controller_path == "admin/costs") %>
+      <nav aria-label="Primary">
+        <%= admin_nav_link "Dashboard", admin_root_path, "admin/dashboard" %>
+        <%= admin_nav_link "Calls", admin_calls_path, "admin/calls" %>
+        <%= admin_nav_link "Recordings", admin_recordings_path, "admin/recordings" %>
+        <%= admin_nav_link "Contacts", admin_contacts_path, "admin/contacts" %>
+        <%= admin_nav_link "Phrases", admin_phrases_path, "admin/phrases" %>
+        <%= admin_nav_link "Tags", admin_tags_path, "admin/tags" %>
+        <%= admin_nav_link "Rules", admin_rules_path, "admin/rules" %>
+        <%= admin_nav_link "Profile", admin_profile_path, "admin/profiles" %>
+        <%= admin_nav_link "Costs", admin_costs_path, "admin/costs" %>
         <% if super_admin? %>
-          <%= link_to "Tenants", admin_tenants_path, class: ("active" if controller_path == "admin/tenants") %>
-          <%= link_to "Settings", admin_settings_path, class: ("active" if controller_path == "admin/settings") %>
+          <%= admin_nav_link "Tenants", admin_tenants_path, "admin/tenants" %>
+          <%= admin_nav_link "Settings", admin_settings_path, "admin/settings" %>
         <% end %>
       </nav>
       <% if current_tenant %>
@@ -165,16 +172,17 @@
         <%= link_to "Logout", destroy_tenant_session_path, data: { turbo_method: :delete }, style: "color: var(--text-muted); font-size: 0.875rem;" %>
       </div>
     </div>
-    <div class="main">
+    <main class="main" id="main">
       <%# Render every flash key, not just notice/alert, so Devise lockout and
           flash[:error]/:warning/:success messages aren't silently dropped (UI-3).
-          Unknown types map to the alert style. %>
+          Unknown types map to the alert style. role=alert + aria-live so screen
+          readers announce them (A11Y-1). %>
       <% flash.each do |type, message| %>
         <% next if message.blank? %>
-        <div class="flash <%= type.to_s == "notice" ? "notice" : "alert" %>"><%= message %></div>
+        <div class="flash <%= type.to_s == "notice" ? "notice" : "alert" %>" role="alert" aria-live="assertive"><%= message %></div>
       <% end %>
       <%= yield %>
-    </div>
+    </main>
   </div>
   <script>
     if ('serviceWorker' in navigator) {

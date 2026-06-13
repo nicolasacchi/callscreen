@@ -1,5 +1,18 @@
 <h1>Dashboard</h1>
 
+<% if @stats[:total_all].zero? %>
+  <div class="card">
+    <h3>Getting started</h3>
+    <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.5rem;">No calls screened yet. To go live:</p>
+    <ul style="font-size: 0.875rem; line-height: 1.9; padding-left: 1.25rem;">
+      <li>Forward your number to the Telnyx number (the dial-back number lives in <%= link_to "Profile", edit_admin_profile_path %>).</li>
+      <li>Pick a greeting and voice in <%= link_to "Profile", edit_admin_profile_path %>.</li>
+      <li>Set your <strong>ntfy URL</strong> in <%= link_to "Profile", edit_admin_profile_path %> so screened calls reach your phone.</li>
+      <li>Optionally add custom <%= link_to "Phrases", admin_phrases_path %> and screening <%= link_to "Rules", admin_rules_path %>.</li>
+    </ul>
+  </div>
+<% end %>
+
 <div class="stats">
   <div class="stat-card">
     <div class="label">Today Total</div>

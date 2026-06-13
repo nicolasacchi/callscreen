@@ -15,7 +15,7 @@
       <% if @tenant.voice_clone_rendered_at %>
         <small style="color: var(--success);">✓ Cloned audio rendered <%= @tenant.voice_clone_rendered_at.in_time_zone(tenant_time_zone).strftime("%Y-%m-%d %H:%M") %></small>
       <% else %>
-        <small style="color: var(--warning);">⚠ Render pending — run <code>bin/clone_render <%= @tenant.id %></code> on the host machine</small>
+        <small style="color: var(--warning);">⏳ Render queued — your cloned audio is generated automatically in the background and usually appears within a few minutes. Use “Re-render now” if it doesn’t.</small>
       <% end %>
     </div>
 

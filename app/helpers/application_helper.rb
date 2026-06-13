@@ -14,6 +14,13 @@ module ApplicationHelper
   # viewed (super-admin cross-tenant pages) when available, else the logged-in
   # tenant; falls back to Europe/Rome. Replaces the hardcoded "Europe/Rome"
   # literal that showed wrong wall-clock times to tenants in other zones.
+  # Sidebar nav link that marks the current page for both sighted users (the
+  # .active class) and assistive tech (aria-current="page").
+  def admin_nav_link(label, path, controller)
+    active = controller_path == controller
+    link_to label, path, class: ("active" if active), aria: { current: (active ? "page" : nil) }
+  end
+
   def tenant_time_zone
     tz = if respond_to?(:viewing_tenant)
       viewing_tenant&.time_zone

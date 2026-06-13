@@ -92,6 +92,14 @@
     <%= f.label :auto_blacklist_window_days, "…within (days)" %>
     <%= f.number_field :auto_blacklist_window_days, min: 1, max: 365 %>
   </div>
+  <div class="form-group form-check">
+    <%= f.check_box :auto_report_spam_globally %>
+    <%= f.label :auto_report_spam_globally, "Share confirmed spam numbers with the cross-tenant reputation database" %>
+    <small style="display: block; color: var(--text-muted);">
+      When ON, a number you mark/block as spam is reported (number only) to the shared
+      spam database in the background, helping other tenants. Off by default.
+    </small>
+  </div>
 
   <h3>Notifications</h3>
   <div class="form-group">
