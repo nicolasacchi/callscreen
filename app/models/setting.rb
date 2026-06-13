@@ -92,7 +92,7 @@ class Setting < ApplicationRecord
   end
 
   def self.validate_phone_number(v)
-    v.to_s.match?(/\A\+?[0-9]{6,15}\z/)
+    v.to_s.match?(Tenant::E164_FORMAT)
   end
 
   def self.validate_speech_timeout(v)

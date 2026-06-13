@@ -3,19 +3,10 @@
 # the call's final disposition. The recording IS the voicemail — there's
 # no separate voicemail prompt after screening.
 class ScreeningJob < ApplicationJob
+  include RetryableTransport  # provides RETRYABLE (shared transient transport errors)
+
   queue_as :default
   discard_on ActiveRecord::RecordNotFound
-
-  # Transport failures (recording download / Whisper) are transient: retry
-  # with backoff rather than committing a wrong disposition. WhisperClient now
-  # raises TransportError on a sidecar outage instead of returning nil, so an
-  # outage no longer masquerades as "the caller said nothing" (status:
-  # :unknown). RecordingDownloader raises TransientError on 5xx/429/timeouts
-  # so a transient download blip no longer dead-letters.
-  RETRYABLE = [
-    Net::OpenTimeout, Net::ReadTimeout, HTTParty::Error,
-    WhisperClient::TransportError, RecordingDownloader::TransientError
-  ].freeze
 
   # When retries are exhausted, surface the failure to the operator (Sentry +
   # an ntfy alert) and mark the call :failed — otherwise a real caller's

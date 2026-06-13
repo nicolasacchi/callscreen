@@ -20,6 +20,11 @@ module Admin
       @call_count     = windowed.count
       @avg_per_call   = @call_count.zero? ? 0.0 : @total / @call_count
 
+      # Month-to-date spend (calendar month in the tenant's zone), independent of
+      # the selected window — the figure that maps to a monthly budget (P3-9).
+      month_start = Time.use_zone(tz) { Time.current.beginning_of_month }
+      @mtd_total  = scope.where(created_at: month_start..).sum(Arel.sql(Call::TOTAL_COST_SQL)).to_f
+
       @chart_data = [
         { name: "Telnyx",
           data: windowed.group_by_day(:created_at, last: @period_days, time_zone: tz)

@@ -73,6 +73,7 @@ class Tenant < ApplicationRecord
   validate :time_zone_is_resolvable
   validate :ntfy_url_safe
 
+  before_validation :nilify_blank_numbers
   before_validation :default_forward_back_to_mobile, on: :create
 
   scope :active, -> { where(active: true) }
@@ -171,6 +172,13 @@ class Tenant < ApplicationRecord
     if voice_sample_path.blank?
       errors.add(:voice_clone_active, "requires a voice sample to be uploaded")
     end
+  end
+
+  # Blank → nil so the partial unique indexes (mobile_number / dedicated_number
+  # IS NOT NULL) let multiple unset tenants coexist instead of colliding on "".
+  def nilify_blank_numbers
+    self.mobile_number    = nil if mobile_number.blank?
+    self.dedicated_number = nil if dedicated_number.blank?
   end
 
   def default_forward_back_to_mobile

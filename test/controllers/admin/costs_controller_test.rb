@@ -70,6 +70,13 @@ module Admin
       assert_match "Total (7d)", @response.body
     end
 
+    test "shows a month-to-date total (P3-9 metering)" do
+      login_as(@tenant)
+      get admin_costs_url
+      assert_response :success
+      assert_match "Month to date", @response.body
+    end
+
     test "renders without errors when there are no calls in the window" do
       Call.delete_all
       login_as(@tenant)

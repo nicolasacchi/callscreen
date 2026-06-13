@@ -1,11 +1,8 @@
 class TranscribeRecordingJob < ApplicationJob
+  include RetryableTransport  # provides RETRYABLE (shared transient transport errors)
+
   queue_as :default
   discard_on ActiveRecord::RecordNotFound
-
-  RETRYABLE = [
-    Net::OpenTimeout, Net::ReadTimeout, HTTParty::Error,
-    WhisperClient::TransportError, RecordingDownloader::TransientError
-  ].freeze
 
   retry_on(*RETRYABLE, wait: :polynomially_longer, attempts: 4) do |job, error|
     report_failure(job.arguments.first, error)

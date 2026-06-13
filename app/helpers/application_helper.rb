@@ -6,7 +6,7 @@ module ApplicationHelper
     str = number.to_s
     return (fallback || "—") if str.blank?
     digits = str.tr_s(" -()", "").delete(" ")
-    return str unless digits.match?(/\A\+?[0-9]{6,15}\z/)
+    return str unless digits.match?(Tenant::E164_FORMAT)
     link_to str, "tel:#{digits}", options
   end
 

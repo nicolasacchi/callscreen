@@ -7,7 +7,8 @@ module RotatingCursor
 
   # Returns list[cursor % size] and advances the cursor column by one, under a
   # row lock so two concurrent webhooks can't pick the same index. Modulo by
-  # (size * 1000) keeps the stored index bounded regardless of list size.
+  # (size * 1000) keeps the stored index bounded yet count-like for the profile
+  # "current position" display, regardless of list size.
   def advance_rotation!(list, column:)
     return nil if list.empty?
     chosen = nil

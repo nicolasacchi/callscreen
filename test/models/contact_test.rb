@@ -11,6 +11,15 @@ class ContactTest < ActiveSupport::TestCase
     assert_not c.valid?
   end
 
+  test "contact_phrases no longer carries the dead position column (DM-3)" do
+    assert_not ContactPhrase.column_names.include?("position")
+    # The per-contact pool join still works after the drop.
+    contact = @tenant.contacts.create!(phone: "+393339990001")
+    phrase = Phrase.create!(tenant: @tenant, slug: "cp_drop_test", label: "X", kind: "user", text_it: "x")
+    contact.phrases << phrase
+    assert_includes contact.reload.phrase_ids, phrase.id
+  end
+
   test "tenant is required" do
     c = Contact.new(phone: "+393335555555", tenant: nil)
     assert_not c.valid?

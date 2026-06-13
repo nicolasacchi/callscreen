@@ -56,6 +56,10 @@
     <div class="value"><%= number_to_currency(@avg_per_call, unit: "$", precision: 4) %></div>
     <div class="label" style="margin-top: 0.25rem;"><%= @call_count %> calls</div>
   </div>
+  <div class="stat-card">
+    <div class="label">Month to date</div>
+    <div class="value"><%= number_to_currency(@mtd_total, unit: "$", precision: 4) %></div>
+  </div>
 </div>
 
 <div class="chart-container">

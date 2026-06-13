@@ -259,4 +259,20 @@ class TenantTest < ActiveSupport::TestCase
     refute @default.valid?
     assert @default.errors[:ntfy_url].any?
   end
+
+  # === DM-2: blank phone numbers nilify; partial unique index allows many blanks ===
+
+  test "blank mobile_number is nilified and multiple tenants may leave it blank" do
+    @default.update!(mobile_number: "")
+    @other.update!(mobile_number: "")
+    assert_nil @default.reload.mobile_number
+    assert_nil @other.reload.mobile_number
+  end
+
+  test "a duplicate non-nil mobile_number is still rejected" do
+    @default.update!(mobile_number: "+393331114444")
+    @other.mobile_number = "+393331114444"
+    refute @other.valid?
+    assert @other.errors[:mobile_number].any?
+  end
 end

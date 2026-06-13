@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_13_040000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_13_060000) do
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "actor_id"
@@ -72,7 +72,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_040000) do
     t.integer "contact_id", null: false
     t.datetime "created_at", null: false
     t.integer "phrase_id", null: false
-    t.integer "position", default: 0, null: false
     t.datetime "updated_at", null: false
     t.index ["contact_id", "phrase_id"], name: "index_contact_phrases_on_contact_id_and_phrase_id", unique: true
     t.index ["contact_id"], name: "index_contact_phrases_on_contact_id"
@@ -244,7 +243,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_040000) do
     t.index ["dedicated_number"], name: "index_tenants_on_dedicated_number", unique: true, where: "dedicated_number IS NOT NULL"
     t.index ["default_tenant"], name: "index_tenants_on_default_tenant", unique: true, where: "default_tenant = 1"
     t.index ["email"], name: "index_tenants_on_email", unique: true
-    t.index ["mobile_number"], name: "index_tenants_on_mobile_number", unique: true
+    t.index ["mobile_number"], name: "index_tenants_on_mobile_number", unique: true, where: "mobile_number IS NOT NULL"
     t.index ["reset_password_token"], name: "index_tenants_on_reset_password_token", unique: true
     t.index ["slug"], name: "index_tenants_on_slug", unique: true
     t.index ["unlock_token"], name: "index_tenants_on_unlock_token", unique: true
