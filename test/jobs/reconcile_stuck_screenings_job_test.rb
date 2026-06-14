@@ -71,4 +71,16 @@ class ReconcileStuckScreeningsJobTest < ActiveJob::TestCase
       ReconcileStuckScreeningsJob.new.perform
     end
   end
+
+  test "a stale recording-present screening is finalized :voicemail, NOT re-enqueued (expired-download guard)" do
+    # Older than RECORDING_FRESH_WITHIN: re-downloading the expired Telnyx URL
+    # would 403 and pollute the dead set, so finalize directly instead.
+    call = @tenant.calls.create!(call_sid: "rs-6", call_control_id: "rs-6", from_number: "+390000000006",
+                                 status: :screening, recording_url: "https://x/stale.wav")
+    call.update_columns(created_at: 30.hours.ago)
+    assert_no_enqueued_jobs only: ScreeningJob do
+      ReconcileStuckScreeningsJob.new.perform
+    end
+    assert_equal "voicemail", call.reload.status
+  end
 end

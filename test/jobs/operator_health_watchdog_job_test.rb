@@ -33,4 +33,9 @@ class OperatorHealthWatchdogJobTest < ActiveJob::TestCase
     OperatorHealthWatchdogJob.new.perform
     assert_not_requested :post, /./
   end
+
+  # NB: the Solid Queue dead set lives in a separate queue DB not present in the
+  # test connection (solid_queue_dead_count is guarded + rescues to 0), so the
+  # windowed dead-set count can't be exercised here — it mirrors the failed_calls
+  # window above and is verified against the live dead set on deploy.
 end

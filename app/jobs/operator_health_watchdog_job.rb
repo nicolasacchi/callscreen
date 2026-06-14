@@ -13,7 +13,7 @@ class OperatorHealthWatchdogJob < ApplicationJob
   def perform(window: WINDOW)
     since = window.ago
 
-    dead_set      = solid_queue_dead_count
+    dead_set      = solid_queue_dead_count(since)
     failed_calls  = Call.where(status: :failed).where(updated_at: since..).count
     failed_renders = Phrase.where(render_status: "failed").where(updated_at: since..).count
     stuck_calls   = Call.where(flow_state: SweepStuckCallsJob::SWEEPABLE_STATES, hung_up_at: nil)
@@ -23,7 +23,7 @@ class OperatorHealthWatchdogJob < ApplicationJob
     return if total.zero?
 
     lines = []
-    lines << "Dead-set jobs: #{dead_set}"               if dead_set.positive?
+    lines << "Job falliti (#{human_window}): #{dead_set}"           if dead_set.positive?
     lines << "Chiamate fallite (#{human_window}): #{failed_calls}"   if failed_calls.positive?
     lines << "Render falliti (#{human_window}): #{failed_renders}"   if failed_renders.positive?
     lines << "Chiamate bloccate: #{stuck_calls}"        if stuck_calls.positive?
@@ -45,11 +45,15 @@ class OperatorHealthWatchdogJob < ApplicationJob
     "ultima ora"
   end
 
-  # The dead set lives in Solid Queue's own tables. Guard the constant so a
-  # future Solid Queue rename can't crash the watchdog (it would just report 0).
-  def solid_queue_dead_count
+  # Count only failures within the trailing window — consistent with the other
+  # metrics. The dead set ACCUMULATES (Solid Queue never auto-clears it), so
+  # reporting the cumulative total made the digest cry the same stale number
+  # every hour long after the operator had addressed (or cleared) it. Recent
+  # failures are the actionable signal. Guard the constant so a future Solid
+  # Queue rename can't crash the watchdog (it would just report 0).
+  def solid_queue_dead_count(since)
     return 0 unless defined?(SolidQueue::FailedExecution)
-    SolidQueue::FailedExecution.count
+    SolidQueue::FailedExecution.where(created_at: since..).count
   rescue StandardError => e
     Rails.logger.error("OperatorHealthWatchdogJob: dead-set count failed: #{e.class}: #{e.message}")
     0
