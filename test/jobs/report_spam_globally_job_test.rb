@@ -28,12 +28,18 @@ class ReportSpamGloballyJobTest < ActiveJob::TestCase
     end
   end
 
-  test "perform POSTs the number to railsdav" do
+  test "perform POSTs the number to railsdav with a source railsdav accepts" do
     ENV["RAILSDAV_API_URL"]   = "http://railsdav.test:3000"
     ENV["RAILSDAV_API_TOKEN"] = "tok"
-    stub = stub_request(:post, "http://railsdav.test:3000/api/spam_reports").to_return(status: 200, body: "{}")
+    stub_request(:post, "http://railsdav.test:3000/api/spam_reports").to_return(status: 200, body: "{}")
     ReportSpamGloballyJob.new.perform(@call.id)
-    assert_requested stub
+    # Guard the cross-service contract: railsdav rejects any source outside its
+    # whitelist (ntfy_report/manual) or feed format with a 422. A bare stub
+    # would hide a bad source (which is how "auto_local_spam" went unnoticed).
+    assert_requested :post, "http://railsdav.test:3000/api/spam_reports" do |req|
+      source = JSON.parse(req.body)["source"]
+      %w[ntfy_report manual].include?(source) || source.match?(/\Afeed:[a-z0-9_\-]{1,40}\z/)
+    end
   ensure
     ENV.delete("RAILSDAV_API_URL")
     ENV.delete("RAILSDAV_API_TOKEN")

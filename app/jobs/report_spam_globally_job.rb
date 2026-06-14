@@ -15,9 +15,15 @@ class ReportSpamGloballyJob < ApplicationJob
 
   def perform(call_id)
     call = Call.find(call_id)
+    # railsdav only accepts a source in its SOURCES_WHITELIST (ntfy_report /
+    # manual) or matching FEED_SOURCE_FORMAT (/\Afeed:[a-z0-9_\-]{1,40}\z/) —
+    # any other value is rejected with 422 invalid_source. The old
+    # "auto_local_spam" was silently rejected on every send. "feed:callscreen_auto"
+    # is a valid feed id and keeps this automatic contribution distinguishable
+    # from a manual operator "ntfy_report" tap.
     result = RailsdavSpamReporter.report(
       call.from_number,
-      source:   "auto_local_spam",
+      source:   "feed:callscreen_auto",
       username: call.tenant&.railsdav_username,
       notes:    nil
     )
