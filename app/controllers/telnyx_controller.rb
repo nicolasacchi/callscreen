@@ -267,11 +267,32 @@ class TelnyxController < ApplicationController
     return unless call
 
     finalize_billing(call)
+    finalize_abandoned_screening(call)
 
     call.update!(flow_state: "done") unless call.flow_state == "done"
     if call.contact.present?
       call.contact.update!(last_called_at: Time.current)
     end
+  end
+
+  # Flow states reached in screening BEFORE record_start fires. A hangup here
+  # means the caller dropped during/before the screening prompt, so no recording
+  # will ever arrive (vs "screening_recording", where a recording.saved may still
+  # be in flight — those are left to ReconcileStuckScreeningsJob after a grace
+  # period so a real recording wins the race).
+  ABANDONED_BEFORE_RECORDING = %w[answered screening_prompt_playing].freeze
+
+  # Caller hung up during screening without leaving a recording — finalize to
+  # :unknown and notify so the operator still sees the missed inbound call,
+  # instead of stranding it at status :screening forever with no push.
+  def finalize_abandoned_screening(call)
+    return unless call.status == "screening"
+    return unless call.notified_at.nil?
+    return if call.recording_url.present?
+    return unless ABANDONED_BEFORE_RECORDING.include?(call.flow_state)
+
+    call.update!(status: :unknown)
+    NotifyJob.perform_later(call.id)
   end
 
   # Captures hung_up_at and derives billable_seconds + telnyx_cost_usd

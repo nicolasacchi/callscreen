@@ -940,6 +940,26 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0.0, call.telnyx_cost_usd.to_f
   end
 
+  test "call.hangup during screening pre-recording (no recording) finalizes :unknown and notifies" do
+    seed_call(flow_state: "screening_prompt_playing", contact: contacts(:regular)) # status :screening, recording_url nil
+    assert_enqueued_jobs 1, only: NotifyJob do
+      post_event event_envelope("call.hangup")
+    end
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal "unknown", call.status, "abandoned-at-screening must leave the :screening limbo"
+    assert_equal "done", call.flow_state
+  end
+
+  test "call.hangup during screening_recording does NOT finalize (a recording may still arrive)" do
+    seed_call(flow_state: "screening_recording", contact: contacts(:regular))
+    assert_no_enqueued_jobs only: NotifyJob do
+      post_event event_envelope("call.hangup")
+    end
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal "screening", call.status, "left for the recording.saved race / watchdog, not finalized here"
+    assert_equal "done", call.flow_state
+  end
+
   test "call.answered stamps answered_at" do
     seed_call(flow_state: "answered", contact: contacts(:regular))
     stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")

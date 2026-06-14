@@ -80,15 +80,31 @@ class NotifyJobTest < ActiveJob::TestCase
     end
   end
 
-  test "unknown status sends question-tagged notification" do
+  test "unknown status WITH a recording (silent caller) sends question-tagged notification" do
     call = calls(:legit_completed)
-    call.update!(notified_at: nil, status: :unknown)
+    call.update!(notified_at: nil, status: :unknown,
+                 recording_url: "https://api.telnyx.com/v2/recordings/x/download.wav")
 
     NotifyJob.new.perform(call.id)
 
     assert_requested :post, @ntfy_url, times: 1 do |req|
       req.headers["Title"].to_s.start_with?("❓ Sconosciuto:") &&
+        req.headers["Priority"].to_s == "default" &&
         req.body.to_s.include?("Il chiamante non ha detto nulla.") &&
+        req.body.to_s.include?("Da: #{call.from_number}")
+    end
+  end
+
+  test "unknown status with NO recording (abandoned at screening) sends a low-priority missed-call push" do
+    call = calls(:legit_completed)
+    call.update!(notified_at: nil, status: :unknown, recording_url: nil)
+
+    NotifyJob.new.perform(call.id)
+
+    assert_requested :post, @ntfy_url, times: 1 do |req|
+      req.headers["Title"].to_s.include?("persa") &&
+        req.headers["Priority"].to_s == "low" &&
+        req.body.to_s.include?("riagganciato durante lo screening") &&
         req.body.to_s.include?("Da: #{call.from_number}")
     end
   end

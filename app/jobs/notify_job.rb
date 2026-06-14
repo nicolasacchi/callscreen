@@ -57,7 +57,18 @@ class NotifyJob < ApplicationJob
         priority: "default", tags: [ "phone", "question" ],
         url: ntfy_url, tenant_priority: ntfy_priority, call: call
       )
+    elsif call.status == "unknown" && call.recording_url.blank?
+      # Abandoned during screening: caller hung up before/while the screening
+      # prompt played, so no recording was ever captured. A low-priority
+      # missed-call alert (the operator still sees the inbound attempt).
+      NtfyNotifier.notify(
+        title: "📞 Chiamata persa: #{caller}", message: abandoned_message(call),
+        priority: "low", tags: [ "phone" ],
+        url: ntfy_url, tenant_priority: ntfy_priority, call: call
+      )
     elsif call.status == "unknown"
+      # Recorded but silent: caller stayed on the line but said nothing
+      # classifiable (blank transcript). Worth a normal-priority heads-up.
       NtfyNotifier.notify(
         title: "❓ Sconosciuto: #{caller}", message: unknown_message(call),
         priority: "default", tags: [ "phone", "question" ],
@@ -121,6 +132,13 @@ class NotifyJob < ApplicationJob
     parts = []
     parts << "Da: #{call.from_number}"
     parts << "Il chiamante non ha detto nulla."
+    parts.join("\n").strip
+  end
+
+  def abandoned_message(call)
+    parts = []
+    parts << "Da: #{call.from_number}"
+    parts << "Ha riagganciato durante lo screening (nessun messaggio)."
     parts.join("\n").strip
   end
 
