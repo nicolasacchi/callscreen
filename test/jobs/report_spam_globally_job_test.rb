@@ -44,4 +44,18 @@ class ReportSpamGloballyJobTest < ActiveJob::TestCase
     ENV.delete("RAILSDAV_API_URL")
     ENV.delete("RAILSDAV_API_TOKEN")
   end
+
+  test "forwards the AI spam evidence as notes so the shared DB records the WHY" do
+    @call.update!(ai_classification: { "summary" => "Robocall", "confidence" => 0.95 })
+    ENV["RAILSDAV_API_URL"]   = "http://railsdav.test:3000"
+    ENV["RAILSDAV_API_TOKEN"] = "tok"
+    stub_request(:post, "http://railsdav.test:3000/api/spam_reports")
+      .with(body: hash_including("notes" => "Robocall (conf 95%)"))
+      .to_return(status: 200, body: "{}")
+    ReportSpamGloballyJob.new.perform(@call.id)
+    assert_requested :post, "http://railsdav.test:3000/api/spam_reports"
+  ensure
+    ENV.delete("RAILSDAV_API_URL")
+    ENV.delete("RAILSDAV_API_TOKEN")
+  end
 end

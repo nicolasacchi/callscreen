@@ -960,6 +960,30 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     assert_equal "done", call.flow_state
   end
 
+  test "call.initiated persists the railsdav lookup snapshot and refreshes the contact name" do
+    ENV["RAILSDAV_API_URL"]   = "http://railsdav.test:3000"
+    ENV["RAILSDAV_API_TOKEN"] = "tok"
+    stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup}).to_return(
+      status: 200, headers: { "Content-Type" => "application/json" },
+      body: { match: true, name: "Dr Rossi", policy: "screen", addressbook: "Pazienti",
+              contact_id: 42, spam_global: false }.to_json
+    )
+    answer_stub = stub_action(CCID, :answer)
+
+    post_event initiated_payload(history_info: history_info_for(@tenant.mobile_number))
+
+    call = Call.find_by!(call_control_id: CCID)
+    assert_equal "screen", call.external_policy
+    assert_equal "Pazienti", call.external_addressbook
+    assert_equal 42, call.external_contact_id
+    refute call.spam_global?
+    assert_equal "Dr Rossi", call.contact.name, "stale/blank local name re-synced from railsdav"
+    assert_requested answer_stub
+  ensure
+    ENV["RAILSDAV_API_URL"] = ""
+    ENV["RAILSDAV_API_TOKEN"] = ""
+  end
+
   test "call.answered stamps answered_at" do
     seed_call(flow_state: "answered", contact: contacts(:regular))
     stub_request(:post, "https://api.telnyx.com/v2/calls/#{CCID}/actions/playback_start")

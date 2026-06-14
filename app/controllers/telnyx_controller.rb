@@ -86,7 +86,13 @@ class TelnyxController < ApplicationController
 
     contact = tenant.contacts.find_or_initialize_by(phone: from)
     contact.last_called_at = Time.current
-    contact.name = external.name if external.matched? && contact.name.blank? && external.name.present?
+    # railsdav's cached_display_name is the canonical book entry (recomputed from
+    # the vCard on every CardDAV sync). Re-sync it even over a stale local name so
+    # an address-book rename propagates to the screener; a manual callscreen
+    # rename is intentionally re-synced. Diff-guarded to avoid no-op writes.
+    if external.matched? && external.name.present? && external.name != contact.name
+      contact.name = external.name
+    end
     contact.save!
 
     call_attrs = {
@@ -99,6 +105,8 @@ class TelnyxController < ApplicationController
       flow_state: "initiated",
       contact: contact,
       attestation: extract_attestation(p),
+      spam_global: external.spam_global?,
+      external_lookup_meta: external_lookup_snapshot(external),
       unattributed: tenant_unattributed?(tenant, to: to, sip_headers: sip_headers)
     }
 
@@ -498,10 +506,26 @@ class TelnyxController < ApplicationController
   # entries don't claim 100% confidence.
   def spam_confidence_for(source, call)
     return 1.0 unless source == "spam_db_global"
-    meta  = call.ai_classification.is_a?(Hash) ? call.ai_classification : {}
-    count = meta.dig("spam_metadata", "report_count").to_i
+    # report_count now lives in the persisted railsdav snapshot (it was never
+    # written to ai_classification, so this previously always scored the 0.5
+    # floor). external_lookup_meta is set in handle_initiated before this runs.
+    count = call.external_lookup_meta&.dig("spam_metadata", "report_count").to_i
     count = 1 if count <= 0
     (count.to_f / 5).clamp(0.5, 1.0)
+  end
+
+  # Snapshot the railsdav lookup for persistence on the Call — the admin view,
+  # the ntfy global-spam line, and spam_confidence_for read it later, but the
+  # live Result is otherwise discarded after CallPolicy. nil when there's
+  # nothing worth storing (unknown caller, no global-spam hit).
+  def external_lookup_snapshot(external)
+    return nil unless external.matched? || external.spam_global?
+    {
+      "policy" => external.policy,
+      "addressbook" => external.addressbook,
+      "contact_id" => external.contact_id,
+      "spam_metadata" => external.spam_metadata.presence
+    }.compact
   end
 
   # Returns the text for a phrase by slug, preferring the system row

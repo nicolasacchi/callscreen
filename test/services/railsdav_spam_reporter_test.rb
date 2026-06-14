@@ -70,4 +70,18 @@ class RailsdavSpamReporterTest < ActiveSupport::TestCase
       !body.key?("submitted_by_username") && !body.key?("notes")
     end
   end
+
+  test "forwards notes when provided" do
+    stub_request(:post, "#{BASE}/api/spam_reports")
+      .with(body: hash_including("notes" => "AI: spam energia"))
+      .to_return(status: 200, body: "{}")
+    assert RailsdavSpamReporter.report("+393331234567", notes: "AI: spam energia")[:ok]
+  end
+
+  test "fails fast as invalid_phone for a non-E.164 number without calling railsdav" do
+    result = RailsdavSpamReporter.report("anonymous")
+    refute result[:ok]
+    assert_equal "invalid_phone", result[:error]
+    assert_not_requested :post, "#{BASE}/api/spam_reports"
+  end
 end

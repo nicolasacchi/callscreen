@@ -18,6 +18,9 @@ class RailsdavSpamReporter
 
   def report
     return failure("missing phone")    if @phone.blank?
+    # railsdav re-validates and 422s a non-E.164 number; fail fast + legibly
+    # instead of surfacing an opaque http_422 to the operator's ntfy tap.
+    return failure("invalid_phone")     unless PhoneNumberNormalizer.e164(@phone)
     base  = ENV["RAILSDAV_API_URL"].to_s.strip.chomp("/")
     token = ENV["RAILSDAV_API_TOKEN"].to_s
     return failure("missing config")   if base.blank? || token.blank?

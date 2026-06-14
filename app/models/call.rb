@@ -36,6 +36,10 @@ class Call < ApplicationRecord
   ].freeze
 
   serialize :ai_classification, coder: JSON
+  # Snapshot of the railsdav contact-lookup result captured at call.initiated
+  # (policy / addressbook / contact_id / spam_metadata). Lets the admin view and
+  # ntfy push show the central reputation without a second lookup.
+  serialize :external_lookup_meta, coder: JSON
 
   validates :flow_state, inclusion: { in: FLOW_STATES }
 
@@ -61,6 +65,25 @@ class Call < ApplicationRecord
 
   def ai_confidence
     ai_classification&.dig("confidence")
+  end
+
+  # --- railsdav lookup snapshot accessors (external_lookup_meta) ---
+  def external_policy      = external_lookup_meta&.dig("policy")
+  def external_addressbook = external_lookup_meta&.dig("addressbook")
+  def external_contact_id  = external_lookup_meta&.dig("contact_id")
+  def spam_global_meta     = external_lookup_meta&.dig("spam_metadata") || {}
+
+  # One-line spam evidence forwarded to railsdav's shared spam DB as `notes`, so
+  # a globally-reported number records WHY it was flagged (the LLM reason
+  # callscreen already computed) instead of a bare number. nil when there's no
+  # LLM evidence, so the reporter's blank-notes guard omits it. Control chars
+  # stripped + length-capped before it crosses the API boundary.
+  def spam_evidence_note
+    body = ai_summary.presence || ai_reason.presence
+    return nil if body.blank?
+    note = body.to_s
+    note += " (conf #{confidence_pct}%)" if confidence_pct
+    note.gsub(/[\r\n\x00-\x1F\x7F]+/, " ").strip.first(500)
   end
 
   # AI confidence as a whole-number percentage, or nil when unknown. Single home

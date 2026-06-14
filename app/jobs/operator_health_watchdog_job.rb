@@ -18,11 +18,18 @@ class OperatorHealthWatchdogJob < ApplicationJob
     failed_renders = Phrase.where(render_status: "failed").where(updated_at: since..).count
     stuck_calls   = Call.where(flow_state: SweepStuckCallsJob::SWEEPABLE_STATES, hung_up_at: nil)
                         .where(created_at: ..SweepStuckCallsJob::STUCK_AFTER.ago).count
+    # railsdav lookups degrade silently to MISS on any error, so an outage
+    # quietly stops honoring central allow/block + global-spam with no symptom.
+    # A reachability probe makes it a monitored dependency.
+    railsdav_down = railsdav_configured? && !railsdav_reachable?
 
-    total = dead_set + failed_calls + failed_renders + stuck_calls
+    # railsdav_down contributes no count, so fold it into the total or the
+    # zero-guard below would suppress a reachability-only alert.
+    total = dead_set + failed_calls + failed_renders + stuck_calls + (railsdav_down ? 1 : 0)
     return if total.zero?
 
     lines = []
+    lines << "Railsdav non raggiungibile"                           if railsdav_down
     lines << "Job falliti (#{human_window}): #{dead_set}"           if dead_set.positive?
     lines << "Chiamate fallite (#{human_window}): #{failed_calls}"   if failed_calls.positive?
     lines << "Render falliti (#{human_window}): #{failed_renders}"   if failed_renders.positive?
@@ -57,5 +64,27 @@ class OperatorHealthWatchdogJob < ApplicationJob
   rescue StandardError => e
     Rails.logger.error("OperatorHealthWatchdogJob: dead-set count failed: #{e.class}: #{e.message}")
     0
+  end
+
+  # Only alert on unreachability when railsdav is actually configured — a
+  # deployment with no RAILSDAV_API_URL intentionally runs without it.
+  def railsdav_configured?
+    ENV["RAILSDAV_API_URL"].to_s.strip.present? && ENV["RAILSDAV_API_TOKEN"].to_s.present?
+  end
+
+  # Off the call hot path (hourly :default job), so a generous timeout is fine —
+  # too tight would produce false "non raggiungibile" alerts under load. Probes
+  # the Bearer-gated /api/health endpoint.
+  def railsdav_reachable?
+    base = ENV["RAILSDAV_API_URL"].to_s.strip.chomp("/")
+    response = HTTParty.get(
+      "#{base}/api/health",
+      headers: { "Authorization" => "Bearer #{ENV['RAILSDAV_API_TOKEN']}", "Accept" => "application/json" },
+      timeout: 4
+    )
+    response.success?
+  rescue StandardError => e
+    Rails.logger.warn("OperatorHealthWatchdogJob: railsdav health probe failed: #{e.class}: #{e.message}")
+    false
   end
 end

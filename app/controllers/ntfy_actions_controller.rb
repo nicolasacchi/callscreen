@@ -44,7 +44,7 @@ class NtfyActionsController < ApplicationController
         call.from_number,
         source:   "ntfy_report",
         username: call.tenant&.railsdav_username,
-        notes:    nil
+        notes:    call.spam_evidence_note # the AI's WHY enriches the shared DB
       )
       audit!(call, "report_spam_globally",
              railsdav_ack: result[:ok] == true,

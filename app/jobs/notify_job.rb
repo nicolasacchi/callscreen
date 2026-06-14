@@ -115,6 +115,7 @@ class NotifyJob < ApplicationJob
     parts << "L'AI non è sicura della classificazione (possibile spam)."
     parts << "Motivo: #{call.ai_reason}" if call.ai_reason
     parts << "Confidenza: #{call.confidence_pct}%" if call.confidence_pct
+    parts << global_spam_line(call) if global_spam_line(call)
     parts.join("\n").strip
   end
 
@@ -125,6 +126,9 @@ class NotifyJob < ApplicationJob
     parts << "«#{call.screening_transcript.strip}»" if call.screening_transcript.present?
     parts << ""
     parts << "Classificazione: #{call.status}#{ai_confidence_suffix(call)}"
+    # A call the AI cleared but railsdav's cross-tenant DB flags is exactly the
+    # case the single-call classifier can't see — surface it loudly.
+    parts << global_spam_line(call) if global_spam_line(call)
     parts.join("\n").strip
   end
 
@@ -145,5 +149,18 @@ class NotifyJob < ApplicationJob
   def ai_confidence_suffix(call)
     return "" unless call.confidence_pct
     " (#{call.confidence_pct}%)"
+  end
+
+  # Cross-tenant corroboration from railsdav's global spam DB (persisted on the
+  # Call at call.initiated). nil unless this number is globally reported.
+  def global_spam_line(call)
+    return nil unless call.spam_global?
+    meta  = call.spam_global_meta
+    count = meta["report_count"].to_i
+    src   = meta["source"].to_s.presence
+    parts = [ "⚠️ Nel DB spam globale" ]
+    parts << "#{count} segnalazioni" if count.positive?
+    parts << "fonte: #{src}" if src
+    parts.join(" — ")
   end
 end

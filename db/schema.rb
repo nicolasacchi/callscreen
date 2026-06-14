@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_13_060000) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_14_000000) do
   create_table "audit_logs", force: :cascade do |t|
     t.string "action", null: false
     t.integer "actor_id"
@@ -36,6 +36,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_060000) do
     t.integer "contact_id"
     t.datetime "created_at", null: false
     t.integer "duration_seconds"
+    t.text "external_lookup_meta"
     t.string "flow_state", default: "initiated", null: false
     t.string "from_number"
     t.datetime "hung_up_at"
@@ -48,6 +49,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_13_060000) do
     t.text "screening_transcript"
     t.string "selected_phrase_slug"
     t.string "selected_voice"
+    t.boolean "spam_global", default: false, null: false
     t.integer "status", default: 0, null: false
     t.decimal "telnyx_cost_usd", precision: 12, scale: 8
     t.integer "tenant_id", null: false

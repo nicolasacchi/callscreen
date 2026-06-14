@@ -44,6 +44,7 @@ class RailsdavContactsClientTest < ActiveSupport::TestCase
     assert_equal "Mario", result.name
     assert_equal "allow", result.policy
     assert_equal "Family", result.addressbook
+    assert_equal 7, result.contact_id
   end
 
   test "match: false with no spam fields → Result(matched?: false, spam_global: false)" do
@@ -89,6 +90,25 @@ class RailsdavContactsClientTest < ActiveSupport::TestCase
   test "returns MISS on timeout" do
     stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup}).to_timeout
     refute RailsdavContactsClient.lookup("+393331234567").matched?
+  end
+
+  test "captures last_seen_at and notes from spam_metadata (the WHY + recency flow down)" do
+    stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup}).to_return(
+      status: 200,
+      body: { match: false, spam_global: true,
+              spam_metadata: { source: "ntfy_report", report_count: 9,
+                               last_seen_at: "2026-06-14T00:00:00Z", notes: "AI: telemarketing" } }.to_json,
+      headers: { "Content-Type" => "application/json" }
+    )
+    result = RailsdavContactsClient.lookup("+393331234567")
+    assert result.spam_global?
+    assert_equal "AI: telemarketing", result.spam_metadata["notes"]
+    assert_equal "2026-06-14T00:00:00Z", result.spam_metadata["last_seen_at"]
+  end
+
+  test "returns MISS for a non-E.164 phone without calling railsdav" do
+    assert_equal RailsdavContactsClient::MISS, RailsdavContactsClient.lookup("anonymous")
+    assert_not_requested :get, %r{railsdav\.test:3000/api/contact_lookup}
   end
 
   test "strips control chars and caps name/addressbook length (defense against injection)" do

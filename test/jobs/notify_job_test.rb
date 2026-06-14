@@ -152,4 +152,16 @@ class NotifyJobTest < ActiveJob::TestCase
     assert_raises(NtfyNotifier::DeliveryError) { NotifyJob.new.perform(call.id) }
     assert_nil call.reload.notified_at, "claim must be released so the retry re-attempts"
   end
+
+  test "legit push surfaces the global-spam corroboration when railsdav flags the number" do
+    call = calls(:legit_completed)
+    call.update!(notified_at: nil, status: :legit, spam_global: true,
+                 external_lookup_meta: { "spam_metadata" => { "report_count" => 14, "source" => "feed:callscreen_auto" } })
+
+    NotifyJob.new.perform(call.id)
+
+    assert_requested :post, @ntfy_url, times: 1 do |req|
+      req.body.to_s.include?("DB spam globale") && req.body.to_s.include?("14 segnalazioni")
+    end
+  end
 end

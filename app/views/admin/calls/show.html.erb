@@ -58,6 +58,41 @@
   </div>
 <% end %>
 
+<%# railsdav reputation & central policy, snapshotted at call.initiated. Shown
+    only when railsdav had something to say (matched contact or global-spam hit),
+    so the operator doesn't context-switch to railsdav to answer "is this known
+    spam / which book matched?". %>
+<% if @call.spam_global? || @call.external_policy.present? %>
+  <div class="card">
+    <h3>Reputazione &amp; policy (railsdav)</h3>
+    <dl class="detail-grid">
+      <% if @call.external_policy.present? %>
+        <dt>Policy centrale</dt>
+        <dd>
+          <code><%= @call.external_policy %></code>
+          <% if @call.external_addressbook.present? %>
+            <small style="color: var(--text-muted);">(<%= @call.external_addressbook %>)</small>
+          <% end %>
+        </dd>
+      <% end %>
+      <dt>DB spam globale</dt>
+      <dd>
+        <% if @call.spam_global? %>
+          <% meta = @call.spam_global_meta %>
+          <span class="badge badge-spam">Segnalato</span>
+          <% if meta["report_count"].to_i.positive? %><%= meta["report_count"] %> segnalazioni<% end %>
+          <% if meta["source"].present? %>· fonte: <code><%= meta["source"] %></code><% end %>
+          <% if meta["notes"].present? %>
+            <div style="margin-top: 0.25rem; color: var(--text-muted);">«<%= meta["notes"] %>»</div>
+          <% end %>
+        <% else %>
+          <span class="badge badge-legit">Non segnalato</span>
+        <% end %>
+      </dd>
+    </dl>
+  </div>
+<% end %>
+
 <div class="card">
   <h3>Cost</h3>
   <dl class="detail-grid">

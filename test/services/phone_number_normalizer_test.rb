@@ -17,4 +17,20 @@ class PhoneNumberNormalizerTest < ActiveSupport::TestCase
   test "returns stripped original for malformed input" do
     assert_equal "abc", PhoneNumberNormalizer.normalize("  abc  ")
   end
+
+  test "e164 returns E.164 for a valid number and nil for an invalid one" do
+    assert_equal "+393331234567", PhoneNumberNormalizer.e164("3331234567")
+    assert_equal "+393331234567", PhoneNumberNormalizer.e164("+393331234567")
+    assert_nil PhoneNumberNormalizer.e164("anonymous")
+    assert_nil PhoneNumberNormalizer.e164(nil)
+    assert_nil PhoneNumberNormalizer.e164("")
+  end
+
+  test "default_country honors PHONE_DEFAULT_COUNTRY (single source of truth with railsdav)" do
+    prev = ENV["PHONE_DEFAULT_COUNTRY"]
+    ENV["PHONE_DEFAULT_COUNTRY"] = "GB"
+    assert_equal "GB", PhoneNumberNormalizer.default_country
+  ensure
+    prev ? (ENV["PHONE_DEFAULT_COUNTRY"] = prev) : ENV.delete("PHONE_DEFAULT_COUNTRY")
+  end
 end

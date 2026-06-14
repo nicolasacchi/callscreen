@@ -1,21 +1,25 @@
 class RailsdavContactsClient
-  Result = Struct.new(:matched?, :name, :policy, :addressbook, :spam_global, :spam_metadata, keyword_init: true) do
+  Result = Struct.new(:matched?, :name, :policy, :addressbook, :contact_id, :spam_global, :spam_metadata, keyword_init: true) do
     alias_method :match?, :matched?
 
     def spam_global?
       spam_global == true
     end
   end
-  MISS = Result.new(matched?: false, name: nil, policy: nil, addressbook: nil, spam_global: false, spam_metadata: {}).freeze
+  MISS = Result.new(matched?: false, name: nil, policy: nil, addressbook: nil, contact_id: nil, spam_global: false, spam_metadata: {}).freeze
 
   ALLOWED_POLICIES = %w[screen allow block].freeze
   MAX_STRING_LEN = 200
-  SPAM_METADATA_KEYS = %w[first_reported_at source report_count].freeze
+  SPAM_METADATA_KEYS = %w[first_reported_at last_seen_at source report_count notes].freeze
   # This lookup sits on the synchronous webhook hot path, in front of
   # cc_client.answer, holding one of only ~3 Puma threads. A tight timeout
   # bounds tail latency if railsdav is slow; the result degrades gracefully to
   # MISS (the local whitelist already covers the allow fast-path) (PERF-1).
   LOOKUP_TIMEOUT_SECS = Float(ENV.fetch("RAILSDAV_LOOKUP_TIMEOUT", "1.5"))
+  # Split the connect phase from the read so a railsdav that's simply down
+  # (refused/no route) fails in <100ms instead of burning the full read budget
+  # while holding 1 of ~3 Puma threads. MISS is the designed safe-degrade.
+  OPEN_TIMEOUT_SECS = Float(ENV.fetch("RAILSDAV_LOOKUP_OPEN_TIMEOUT", "0.5"))
 
   def self.lookup(phone, username: nil)
     new(phone, username: username).lookup
@@ -28,6 +32,9 @@ class RailsdavContactsClient
 
   def lookup
     return MISS if @phone.blank?
+    # Don't spend a hot-path HTTP call on a value railsdav would only answer
+    # match:false for — anonymous/withheld/shortcode From numbers aren't E.164.
+    return MISS unless PhoneNumberNormalizer.e164(@phone)
 
     base  = ENV["RAILSDAV_API_URL"].to_s.strip.chomp("/")
     token = ENV["RAILSDAV_API_TOKEN"].to_s
@@ -44,7 +51,8 @@ class RailsdavContactsClient
         "Accept" => "application/json",
         "X-Request-ID" => Current.request_id.to_s
       },
-      timeout: LOOKUP_TIMEOUT_SECS
+      open_timeout: OPEN_TIMEOUT_SECS,
+      read_timeout: LOOKUP_TIMEOUT_SECS
     )
 
     return MISS unless response.success?
@@ -61,7 +69,7 @@ class RailsdavContactsClient
     # priority-3.5 gate can fire on numbers we have no contact for.
     unless body["match"]
       return Result.new(
-        matched?: false, name: nil, policy: nil, addressbook: nil,
+        matched?: false, name: nil, policy: nil, addressbook: nil, contact_id: nil,
         spam_global: spam_global, spam_metadata: spam_metadata
       )
     end
@@ -74,6 +82,7 @@ class RailsdavContactsClient
       name: sanitize_string(body["name"]),
       policy: policy,
       addressbook: sanitize_string(body["addressbook"]),
+      contact_id: body["contact_id"]&.to_i,
       spam_global: spam_global,
       spam_metadata: spam_metadata
     )
@@ -102,8 +111,10 @@ class RailsdavContactsClient
     return {} unless value.is_a?(Hash)
     out = {}
     out["first_reported_at"] = sanitize_string(value["first_reported_at"]) if value["first_reported_at"]
+    out["last_seen_at"]      = sanitize_string(value["last_seen_at"])      if value["last_seen_at"]
     out["source"]            = sanitize_string(value["source"])            if value["source"]
     out["report_count"]      = value["report_count"].to_i                  if value["report_count"]
+    out["notes"]             = sanitize_string(value["notes"])             if value["notes"]
     out
   end
 end

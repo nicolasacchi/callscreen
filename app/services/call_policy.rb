@@ -90,9 +90,11 @@ class CallPolicy
     meta  = @external.spam_metadata || {}
     src   = meta["source"].to_s.presence
     count = meta["report_count"].to_i
+    notes = meta["notes"].to_s.presence
     parts = [ "Global spam DB hit" ]
     parts << "source: #{src}" if src
     parts << "reports: #{count}" if count > 0
+    parts << "note: #{notes}" if notes
     parts.join(" — ")
   end
 end

@@ -25,7 +25,7 @@ class ReportSpamGloballyJob < ApplicationJob
       call.from_number,
       source:   "feed:callscreen_auto",
       username: call.tenant&.railsdav_username,
-      notes:    nil
+      notes:    call.spam_evidence_note # the AI's WHY enriches the shared DB
     )
     return if result[:ok]
     Rails.logger.warn("ReportSpamGloballyJob: railsdav report failed for call #{call_id}: #{result[:error]}")
