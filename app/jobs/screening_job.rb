@@ -34,7 +34,7 @@ class ScreeningJob < ApplicationJob
         priority: "high",
         tags: [ "envelope_with_arrow" ],
         url: call.tenant&.ntfy_url,
-        default_priority: call.tenant&.ntfy_priority,
+        tenant_priority: call.tenant&.ntfy_priority,
         call: call
       )
       call.update!(notified_at: Time.current)
@@ -47,7 +47,7 @@ class ScreeningJob < ApplicationJob
         priority: "high",
         tags: [ "warning" ],
         url: call.tenant&.ntfy_url,
-        default_priority: call.tenant&.ntfy_priority
+        tenant_priority: call.tenant&.ntfy_priority
       )
       call.update!(notified_at: Time.current)
     end

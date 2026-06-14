@@ -103,4 +103,53 @@ class NtfyNotifierTest < ActiveSupport::TestCase
       Rails.logger = original
     end
   end
+
+  # === non-2xx delivery: the prime silent-failure bug ===
+
+  test "non-2xx response is a failure: returns false, logs the code, bumps the counter (no reset)" do
+    NtfyNotifier.consecutive_failures = 0
+    stub_request(:post, @url).to_return(status: 403, body: "forbidden topic")
+
+    io = StringIO.new
+    original = Rails.logger
+    Rails.logger = ActiveSupport::Logger.new(io)
+    begin
+      result = NtfyNotifier.notify(title: "x", message: "y")
+      assert_equal false, result, "a rejected push must report failure"
+      assert_equal 1, NtfyNotifier.consecutive_failures, "non-2xx must increment the failure counter"
+      assert_match(/403/, io.string)
+    ensure
+      Rails.logger = original
+    end
+  end
+
+  test "a 2xx delivery returns true" do
+    stub_request(:post, @url).to_return(status: 200)
+    assert_equal true, NtfyNotifier.notify(title: "x", message: "y")
+  end
+
+  test "a 'disabled'/blank destination returns true (suppressed, not a failure)" do
+    assert_equal true, NtfyNotifier.notify(title: "x", message: "y", url: "disabled")
+  end
+
+  test "CR/LF in the title is stripped so Net::HTTP can't be crashed or header-injected" do
+    stub_request(:post, @url).to_return(status: 200)
+    NtfyNotifier.notify(title: "Mario\r\nX-Evil: 1", message: "y")
+    assert_requested :post, @url do |req|
+      t = req.headers["Title"].to_s
+      !t.include?("\n") && !t.include?("\r") && t.include?("Mario")
+    end
+  end
+
+  test "an explicit non-default tenant_priority overrides the per-call priority" do
+    stub_request(:post, @url).to_return(status: 200)
+    NtfyNotifier.notify(title: "x", message: "y", priority: "low", tenant_priority: "max")
+    assert_requested(:post, @url) { |req| req.headers["Priority"].to_s == "max" }
+  end
+
+  test "tenant_priority 'default' defers to the per-call priority (no flattening)" do
+    stub_request(:post, @url).to_return(status: 200)
+    NtfyNotifier.notify(title: "x", message: "y", priority: "high", tenant_priority: "default")
+    assert_requested(:post, @url) { |req| req.headers["Priority"].to_s == "high" }
+  end
 end

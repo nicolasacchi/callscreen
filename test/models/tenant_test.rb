@@ -260,6 +260,16 @@ class TenantTest < ActiveSupport::TestCase
     assert @default.errors[:ntfy_url].any?
   end
 
+  test "ntfy_url surrounding whitespace is stripped on save (else every POST raises)" do
+    @default.update!(ntfy_url: "  https://ntfy.sh/topic\n")
+    assert_equal "https://ntfy.sh/topic", @default.reload.ntfy_url
+  end
+
+  test "a bare-hostname ntfy_url gets https:// prepended and stored normalized" do
+    @default.update!(ntfy_url: "ntfy.example.com/topic")
+    assert_equal "https://ntfy.example.com/topic", @default.reload.ntfy_url
+  end
+
   # === DM-2: blank phone numbers nilify; partial unique index allows many blanks ===
 
   test "blank mobile_number is nilified and multiple tenants may leave it blank" do

@@ -12,15 +12,34 @@ class TranscribeRecordingJob < ApplicationJob
     Rails.logger.error("TranscribeRecordingJob failed for call #{call_id} (#{error.class.name})")
     Sentry.capture_exception(error) if defined?(Sentry)
     call = Call.find_by(id: call_id)
-    call&.update!(status: :failed)
-    NtfyNotifier.notify(
-      title: "Transcription failed",
-      message: "Call #{call_id} failed transcription (#{error.class.name})",
-      priority: "high",
-      tags: [ "warning" ],
-      url: call&.tenant&.ntfy_url,
-      default_priority: call&.tenant&.ntfy_priority
-    )
+    return unless call
+    # Idempotent: a success push (or a prior failure push) already claimed the
+    # call — never double-alert or overwrite a delivered disposition.
+    return if call.notified_at?
+
+    if call.recording_local_path.present?
+      # We have the downloaded audio — only transcription failed (e.g. a Whisper
+      # outage). Degrade to a voicemail the operator can still listen to via the
+      # authenticated recording playback, not a dead :failed (P2-5).
+      call.update!(status: :voicemail) unless %w[voicemail completed].include?(call.status)
+      return if Call.where(id: call.id, notified_at: nil).update_all(notified_at: Time.current).zero?
+      NtfyNotifier.notify(
+        title: "📨 Messaggio vocale da #{call.contact_name}",
+        message: "Da: #{call.from_number}\nTrascrizione non disponibile — ascolta la registrazione nell'app.",
+        priority: "high", tags: [ "envelope_with_arrow" ],
+        url: call.tenant&.ntfy_url, tenant_priority: call.tenant&.ntfy_priority, call: call
+      )
+    else
+      # No audio downloaded — nothing to listen to, so :failed is correct.
+      call.update!(status: :failed) unless call.status == "completed"
+      return if Call.where(id: call.id, notified_at: nil).update_all(notified_at: Time.current).zero?
+      NtfyNotifier.notify(
+        title: "⚠️ Trascrizione non riuscita",
+        message: "Chiamata da #{call.from_number} — trascrizione non riuscita (#{error.class.name}).",
+        priority: "high", tags: [ "warning" ],
+        url: call.tenant&.ntfy_url, tenant_priority: call.tenant&.ntfy_priority
+      )
+    end
   end
 
   def perform(call_id)
@@ -35,16 +54,20 @@ class TranscribeRecordingJob < ApplicationJob
       status: :completed
     )
 
-    # Skip ntfy push if the call was already notified (e.g. by NotifyJob for
-    # the spam-confirmed path, or a duplicate run of this job).
-    unless call.notified_at?
+    # Atomic claim mirrors NotifyJob: exactly one push per call, race-safe
+    # against NotifyJob (spam-confirmed path) and any duplicate/retried run.
+    # Routes through the tenant's ntfy_url (honouring the 'disabled' opt-out)
+    # and carries the action buttons, like every other notify site.
+    if Call.where(id: call.id, notified_at: nil).update_all(notified_at: Time.current).positive?
       NtfyNotifier.notify(
         title: notification_title(call),
         message: build_message(call, transcript),
         priority: "high",
-        tags: [ "phone", call.status.to_s ]
+        tags: [ "phone", call.status.to_s ],
+        url: call.tenant&.ntfy_url,
+        tenant_priority: call.tenant&.ntfy_priority,
+        call: call
       )
-      call.update!(notified_at: Time.current)
     end
   rescue *RETRYABLE
     raise # defer to retry_on; report_failure runs once on exhaustion

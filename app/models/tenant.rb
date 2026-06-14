@@ -74,6 +74,7 @@ class Tenant < ApplicationRecord
   validate :ntfy_url_safe
 
   before_validation :nilify_blank_numbers
+  before_validation :normalize_ntfy_url
   before_validation :default_forward_back_to_mobile, on: :create
 
   scope :active, -> { where(active: true) }
@@ -222,13 +223,31 @@ class Tenant < ApplicationRecord
     errors.add(:time_zone, "is not a recognized time zone")
   end
 
+  # Trim surrounding whitespace and supply a default scheme BEFORE validation so
+  # the stored value is exactly what was validated and what NotifyJob will POST
+  # to. A copy-pasted URL with a trailing newline/space (or a bare hostname like
+  # "ntfy.example.com/topic") otherwise validated clean on a stripped copy yet
+  # made every HTTParty.post raise URI::InvalidURIError — swallowed as a silent
+  # lost push, with the profile looking fine.
+  def normalize_ntfy_url
+    return unless ntfy_url.is_a?(String)
+    v = ntfy_url.strip
+    # Prepend https:// only for a truly scheme-less value (bare hostname). A
+    # value that already carries a scheme (even a disallowed one like ftp://) is
+    # left as-is so ntfy_url_safe can reject it rather than mask it.
+    if v.present? && v != "disabled" && v !~ %r{\A[a-z][a-z0-9+.\-]*://}i
+      v = "https://#{v}"
+    end
+    self.ntfy_url = v
+  end
+
   # ntfy_url is tenant-controlled (set from the profile form) and the NotifyJob
   # worker POSTs to it server-side — a blind SSRF / internal-probe vector if
   # left unchecked. Allow blank (ENV fallback) and the "disabled" sentinel.
   # Otherwise require an http(s) URL whose host is not an IP literal in a
   # private / loopback / link-local range (the cloud-metadata + internal-service
-  # probe vectors). A bare hostname is allowed — operators legitimately point at
-  # self-hosted ntfy on public domains.
+  # probe vectors). A bare hostname is accepted — normalize_ntfy_url prepends
+  # https:// — so operators can point at self-hosted ntfy on public domains.
   def ntfy_url_safe
     raw = ntfy_url.to_s.strip
     return if raw.blank? || raw == "disabled"

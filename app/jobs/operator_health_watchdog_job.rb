@@ -34,7 +34,7 @@ class OperatorHealthWatchdogJob < ApplicationJob
       message: lines.join("\n"),
       priority: "high",
       tags: [ "warning" ]
-      # No url:/default_priority: → NtfyNotifier falls back to ENV["NTFY_URL"],
+      # No url:/tenant_priority: → NtfyNotifier falls back to ENV["NTFY_URL"],
       # the operator's own endpoint.
     )
   end

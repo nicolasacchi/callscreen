@@ -112,4 +112,28 @@ class NotifyJobTest < ActiveJob::TestCase
     # Second run loses the claim (notified_at already set) and sends nothing.
     assert_requested :post, @ntfy_url, times: 1
   end
+
+  test "uncertain status is triaged, not shown as a clean high-priority legit call" do
+    call = calls(:legit_completed)
+    call.update!(notified_at: nil, status: :uncertain,
+                 ai_classification: { "classification" => "spam", "confidence" => 0.4, "reason" => "forse" })
+
+    NotifyJob.new.perform(call.id)
+
+    assert_requested :post, @ntfy_url, times: 1 do |req|
+      req.headers["Title"].to_s.start_with?("⚠️ Incerto:") &&
+        req.headers["Priority"].to_s == "default" &&
+        req.headers["Tags"].to_s.include?("question") &&
+        req.body.to_s.include?("possibile spam")
+    end
+  end
+
+  test "a failed push releases the notified_at claim and raises so it retries" do
+    call = calls(:spam_completed)
+    call.update!(notified_at: nil)
+    stub_request(:post, @ntfy_url).to_return(status: 503, body: "boom")
+
+    assert_raises(NtfyNotifier::DeliveryError) { NotifyJob.new.perform(call.id) }
+    assert_nil call.reload.notified_at, "claim must be released so the retry re-attempts"
+  end
 end

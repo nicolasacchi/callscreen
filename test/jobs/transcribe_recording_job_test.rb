@@ -124,4 +124,33 @@ class TranscribeRecordingJobTest < ActiveJob::TestCase
     assert_raises(StandardError) { TranscribeRecordingJob.new.perform(@call.id) }
     assert_equal "failed", @call.reload.status
   end
+
+  test "voicemail push routes to the tenant's ntfy_url and carries action buttons" do
+    @call.tenant.update!(ntfy_url: "https://ntfy.example.test/tenant-topic")
+    stub_request(:get, @call.recording_url).to_return(status: 200, body: "FAKE_WAV")
+    stub_request(:post, @whisper_url).to_return(status: 200, body: { text: "ciao" }.to_json)
+    stub_request(:post, "https://ntfy.example.test/tenant-topic").to_return(status: 200)
+
+    perform_enqueued_jobs { TranscribeRecordingJob.perform_later(@call.id) }
+
+    assert_requested :post, "https://ntfy.example.test/tenant-topic" do |req|
+      req.headers["Actions"].to_s.include?("/whitelist")
+    end
+    assert_not_requested :post, @ntfy_url # NOT the ENV default
+  ensure
+    FileUtils.rm_f(Rails.root.join("storage/recordings/#{@call.call_sid}.wav").to_s)
+  end
+
+  test "report_failure degrades to :voicemail with a listen-in-app push when audio was downloaded" do
+    @call.update!(recording_local_path: Rails.root.join("storage/recordings/x.wav").to_s, notified_at: nil)
+    stub_request(:post, @ntfy_url).to_return(status: 200)
+
+    TranscribeRecordingJob.report_failure(@call.id, WhisperClient::TransportError.new("whisper down"))
+
+    assert_equal "voicemail", @call.reload.status
+    assert_requested :post, @ntfy_url do |req|
+      req.headers["Title"].to_s.include?("Messaggio vocale") &&
+        req.body.to_s.include?("ascolta la registrazione")
+    end
+  end
 end
