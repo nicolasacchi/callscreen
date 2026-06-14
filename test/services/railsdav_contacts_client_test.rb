@@ -111,6 +111,17 @@ class RailsdavContactsClientTest < ActiveSupport::TestCase
     assert_not_requested :get, %r{railsdav\.test:3000/api/contact_lookup}
   end
 
+  test "captures kind and (sanitized, bounded) groups for a matched contact" do
+    stub_request(:get, %r{railsdav\.test:3000/api/contact_lookup}).to_return(
+      status: 200, headers: { "Content-Type" => "application/json" },
+      body: { match: true, name: "Bob", policy: "screen", contact_id: 5,
+              kind: "individual", groups: [ "Family", "Doctors\r\nX" ] }.to_json
+    )
+    r = RailsdavContactsClient.lookup("+393331234567")
+    assert_equal "individual", r.kind
+    assert_equal [ "Family", "DoctorsX" ], r.groups # control chars stripped
+  end
+
   test "strips control chars and caps name/addressbook length (defense against injection)" do
     payload_name = "Mario\r\n<script>alert(1)</script>" + ("x" * 1000)
     payload_ab = "Family\nReason: PWNED\r\n"

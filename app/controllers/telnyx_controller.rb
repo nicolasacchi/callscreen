@@ -524,6 +524,8 @@ class TelnyxController < ApplicationController
       "policy" => external.policy,
       "addressbook" => external.addressbook,
       "contact_id" => external.contact_id,
+      "kind" => external.kind,
+      "groups" => external.groups.presence,
       "spam_metadata" => external.spam_metadata.presence
     }.compact
   end

@@ -24,6 +24,17 @@ class NtfyActionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "ntfy", log.metadata["source"]
   end
 
+  test "whitelist propagates the allow decision UP to railsdav (when configured)" do
+    ENV["RAILSDAV_API_URL"] = "http://railsdav.test:3000"
+    tok = NtfyActionToken.encode(call_id: @call.id, action: "whitelist")
+    assert_enqueued_jobs 1, only: RailsdavAllowJob do
+      post ntfy_whitelist_call_url(@call.id, t: tok)
+    end
+    assert_response :ok
+  ensure
+    ENV["RAILSDAV_API_URL"] = ""
+  end
+
   test "mark_spam: valid token flips status + creates audit row" do
     @call.update!(status: :legit)
     tok = NtfyActionToken.encode(call_id: @call.id, action: "mark_spam")

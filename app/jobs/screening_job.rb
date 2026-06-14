@@ -92,7 +92,7 @@ class ScreeningJob < ApplicationJob
     # Feed the classifier this tenant's operator corrections (few-shot) + a
     # per-caller history hint, so manual feedback compounds (P2-2).
     feedback = ClassifierFeedback.for(tenant: tenant, contact: call.contact)
-    hints = [ feedback.contact_hint, attestation_hint(call) ].compact.join(" ")
+    hints = [ railsdav_identity_hint(call), feedback.contact_hint, attestation_hint(call) ].compact.join(" ")
     result = SpamClassifier.new(transcript, from_number: call.from_number,
                                 sensitivity: sensitivity,
                                 examples: feedback.examples,
@@ -107,6 +107,10 @@ class ScreeningJob < ApplicationJob
         finalize(call, status: :uncertain, ai_classification: result, source: "llm")
       end
     when "legit"
+      # NB: an AI-legit verdict is deliberately NOT propagated to railsdav as an
+      # allow contact. Central allow requires an explicit operator action (the
+      # ntfy Whitelist button → RailsdavAllowJob); auto-allowing on one smooth
+      # LLM verdict would be a cross-tenant trust-poisoning vector.
       finalize(call, status: :legit, ai_classification: result, source: "llm")
     else
       finalize(call, status: :uncertain, ai_classification: result, source: "llm")
@@ -153,6 +157,22 @@ class ScreeningJob < ApplicationJob
 
   # Soft anti-spoofing hint from STIR/SHAKEN attestation (P2-5). Never a hard
   # block — carrier-forwarded calls (the common path here) strip attestation.
+  # Soft legitimacy context from the operator's address book (railsdav snapshot
+  # persisted at call.initiated): a caller the operator has SAVED — especially
+  # one filed into groups — is much less likely to be spam. We pass the FACT +
+  # group count, never the raw group names, since contact_hint lands in the
+  # trusted system prompt (raw vCard CATEGORIES there would be an injection
+  # surface). Only fires for a matched contact; policy=allow already bypasses
+  # screening upstream, so this only colours the borderline policy=screen ones.
+  def railsdav_identity_hint(call)
+    meta = call.external_lookup_meta
+    return nil unless meta.is_a?(Hash) && meta["contact_id"].present?
+    groups = Array(meta["groups"]).reject(&:blank?)
+    note = "Contesto: il numero è tra i contatti salvati in rubrica dall'operatore"
+    note += " (#{groups.size} gruppo/i)" if groups.any?
+    "#{note}."
+  end
+
   def attestation_hint(call)
     att = call.attestation.to_s.strip
     return nil if att.blank?

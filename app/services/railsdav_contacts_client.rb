@@ -1,15 +1,16 @@
 class RailsdavContactsClient
-  Result = Struct.new(:matched?, :name, :policy, :addressbook, :contact_id, :spam_global, :spam_metadata, keyword_init: true) do
+  Result = Struct.new(:matched?, :name, :policy, :addressbook, :contact_id, :kind, :groups, :spam_global, :spam_metadata, keyword_init: true) do
     alias_method :match?, :matched?
 
     def spam_global?
       spam_global == true
     end
   end
-  MISS = Result.new(matched?: false, name: nil, policy: nil, addressbook: nil, contact_id: nil, spam_global: false, spam_metadata: {}).freeze
+  MISS = Result.new(matched?: false, name: nil, policy: nil, addressbook: nil, contact_id: nil, kind: nil, groups: [], spam_global: false, spam_metadata: {}).freeze
 
   ALLOWED_POLICIES = %w[screen allow block].freeze
   MAX_STRING_LEN = 200
+  MAX_GROUPS = 20
   SPAM_METADATA_KEYS = %w[first_reported_at last_seen_at source report_count notes].freeze
   # This lookup sits on the synchronous webhook hot path, in front of
   # cc_client.answer, holding one of only ~3 Puma threads. A tight timeout
@@ -70,7 +71,7 @@ class RailsdavContactsClient
     unless body["match"]
       return Result.new(
         matched?: false, name: nil, policy: nil, addressbook: nil, contact_id: nil,
-        spam_global: spam_global, spam_metadata: spam_metadata
+        kind: nil, groups: [], spam_global: spam_global, spam_metadata: spam_metadata
       )
     end
 
@@ -83,6 +84,8 @@ class RailsdavContactsClient
       policy: policy,
       addressbook: sanitize_string(body["addressbook"]),
       contact_id: body["contact_id"]&.to_i,
+      kind: sanitize_string(body["kind"]),
+      groups: sanitize_groups(body["groups"]),
       spam_global: spam_global,
       spam_metadata: spam_metadata
     )
@@ -102,6 +105,13 @@ class RailsdavContactsClient
     cleaned = value.to_s.gsub(/[\r\n\x00-\x1F\x7F]/, "").strip
     return nil if cleaned.empty?
     cleaned.first(MAX_STRING_LEN)
+  end
+
+  # Bounded, sanitized list of group names (vCard CATEGORIES). Caps count + each
+  # element so an adversarial/huge response can't bloat the persisted snapshot
+  # or the classifier prompt.
+  def sanitize_groups(value)
+    Array(value).first(MAX_GROUPS).filter_map { |g| sanitize_string(g) }
   end
 
   # Coerce the spam_metadata field into a Hash with only the expected keys.

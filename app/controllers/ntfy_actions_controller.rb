@@ -26,6 +26,9 @@ class NtfyActionsController < ApplicationController
       contact = call.contact || call.tenant.contacts.find_or_create_by!(phone: call.from_number)
       contact.update!(whitelisted: true, blacklisted: false)
       audit!(call, "whitelist_number", contact_id: contact.id)
+      # Propagate the trust decision UP to railsdav's central book (best-effort,
+      # background) so the shared policy learns it too — mirrors the spam-UP path.
+      RailsdavAllowJob.maybe_enqueue(call)
       # If the operator whitelists while a polite_disclose / troll
       # response is still mid-flight, abort the active call — otherwise
       # the spammer keeps getting trolled even though we've decided
