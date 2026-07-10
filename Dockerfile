@@ -47,15 +47,27 @@ RUN apt-get update -qq && \
 # Kokoro pins to Python <3.13 but the base image ships Python 3.13. Use uv
 # to install a standalone Python 3.12 build into /opt/python and create the
 # tts venv from it. uv itself is only needed at build time.
+#
+# torch and the TTS packages MUST install in a single pip invocation with
+# --index-url pinned to the CPU wheel index. Split across two `pip install`
+# calls (as this used to be), chatterbox-tts's own torch requirement is
+# resolved in a separate solve against pip's default (PyPI) index — which
+# silently reinstalls torch WITHOUT the +cpu tag, dragging in ~10 unused
+# nvidia-cu12-* CUDA packages (multi-GB, useless on this CPU-only host) and
+# turning a normally-cached build step into an 8+ minute reinstall. Verified
+# in prod build 2026-07-10 (installed torch-2.13.0+cpu, then silently
+# reinstalled plain torch-2.6.0 with full CUDA deps in the second call).
+# chatterbox-tts/kokoro pinned to the last known-good combo (torch left
+# unpinned — the CPU wheel index versions it independently of PyPI mainline).
 ENV UV_PYTHON_INSTALL_DIR=/opt/python
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh && \
     uv python install 3.12 && \
     "$(uv python find 3.12)" -m venv /opt/tts_venv && \
     /opt/tts_venv/bin/python -m pip install --upgrade pip && \
     /opt/tts_venv/bin/python -m pip install --no-cache-dir \
-        torch --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/tts_venv/bin/python -m pip install --no-cache-dir \
-        chatterbox-tts "kokoro>=0.9.4" soundfile numpy
+        --index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url https://pypi.org/simple \
+        torch chatterbox-tts==0.1.7 kokoro==0.9.4 soundfile numpy
 
 # === Ruby gem build stage ===============================================
 FROM base AS ruby_build
