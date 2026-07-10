@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="kb-category" content="plan">
+<meta name="kb-tags" content="status:open, project:callscreen, roadmap, productization, ops, billing, onboarding, i18n">
+<title>Callscreen Productization Roadmap — July 2026</title>
+<style>
+:root{
+  --bg:#faf7f2;--surface:#f1ece2;--fg:#26221c;--muted:#5d564a;
+  --rule:#ddd5c7;--accent:#1d5f50;--accent-fg:#ffffff;
+  --warn:#7d5100;--danger:#9c2d26;--ok:#28613f;
+  --fs-body:1.0625rem;--fs-small:.85rem;--lh:1.6;--maxw:47rem;
+  --serif:ui-serif,Georgia,"Times New Roman",serif;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+  --radius:6px;--focus:2px solid var(--accent);
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#171b19;--surface:#212622;--fg:#e9e6df;--muted:#aaa79b;
+    --rule:#343a33;--accent:#86d3c1;--accent-fg:#0f1f1a;
+    --warn:#ddb35c;--danger:#f08b81;--ok:#85cfa0;}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}
+}
+:focus-visible{outline:var(--focus);outline-offset:2px}
+.skip-link{position:absolute;left:-9999px;top:0;background:var(--fg);color:var(--bg);padding:.5rem 1rem;z-index:100;font:600 var(--fs-small)/1 var(--mono);text-transform:uppercase;letter-spacing:.05em;text-decoration:none}
+.skip-link:focus{left:.5rem;top:.5rem}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:var(--lh);font-size:var(--fs-body)}
+.artifact{max-width:var(--maxw);margin:0 auto;padding:3rem 1.25rem 6rem}
+h1,h2,h3{line-height:1.25;font-weight:650;scroll-margin-top:24px}
+h1{font-size:1.85rem;margin:.2em 0 .3em}
+h2{font-size:1.32rem;margin:2.2em 0 .6em;padding-top:.4em;border-top:1px solid var(--rule)}
+h3{font-size:1.08rem;margin:1.6em 0 .4em}
+p,li{font-family:var(--serif)}
+a{color:var(--accent);text-underline-offset:2px}
+a:focus-visible{outline:var(--focus);outline-offset:2px;border-radius:2px}
+.kicker{font-family:var(--sans);font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:.5ch}
+.kicker .dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--accent);display:inline-block}
+.kicker .sep,.meta-strip .sep{color:var(--rule)}
+.lede{font-family:var(--serif);font-size:1.16rem;margin:.4em 0 1em}
+.meta-strip{font-family:var(--sans);font-size:.82rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:.6ch;align-items:center;margin-bottom:1.5rem}
+.tag{font-family:var(--mono);font-size:.78rem;background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:.05em .45em}
+code{font-family:var(--mono);font-size:.88em;background:var(--surface);border-radius:4px;padding:.08em .35em}
+pre{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:1rem;overflow:auto;font-size:.85rem;line-height:1.5}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:.9rem;margin:1em 0}
+th,td{border:1px solid var(--rule);padding:.5em .7em;text-align:left;vertical-align:top}
+th{background:var(--surface);font-weight:600}
+.callout{font-family:var(--serif);border:1px solid var(--rule);border-left:4px solid var(--accent);border-radius:var(--radius);background:color-mix(in srgb,var(--accent) 7%,var(--bg));padding:.8em 1em;margin:1.2em 0}
+.callout-label{font-family:var(--sans);font-weight:650;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:.3em}
+.callout--warn{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 9%,var(--bg))}
+.callout--warn .callout-label{color:var(--warn)}
+.callout--danger{border-left-color:var(--danger);background:color-mix(in srgb,var(--danger) 9%,var(--bg))}
+.callout--danger .callout-label{color:var(--danger)}
+.callout--ok{border-left-color:var(--ok);background:color-mix(in srgb,var(--ok) 9%,var(--bg))}
+.callout--ok .callout-label{color:var(--ok)}
+main:focus{outline:none}
+</style>
+<template id="kb-prompt">
+ROLE
+You are implementing the Callscreen productization roadmap in .
+(Rails 8.1 / SQLite / Solid Queue / Telnyx Call Control, deployed via compose.yml,
+prod at phone.example.com). Body sections phase-0 .. phase-3 carry rationale; execute in order.
+
+PRECONDITIONS
+- main includes commit d7efe77 (queue-rot + PersistRecordingJob fix): git log --oneline -1
+- Unit suite green: bundle exec bin/rails test  → "0 failures, 0 errors"
+- Prod healthy: curl -s -o /dev/null -w "%{http_code}" https://phone.example.com/up  → 200
+
+STEPS (phase 0 — protect what exists; operator-approval items marked [OP])
+1. [OP] Deploy d7efe77: docker compose -f compose.yml build callscreen && docker compose -f compose.yml up -d callscreen — verify: curl /up → 200, docker exec callscreen bin/rails runner 'puts SolidQueue::Process.count' ≥ 4
+2. [OP] Purge stale recurring backlog: docker exec callscreen bin/rails runner 'SolidQueue::Job.where(queue_name: "solid_queue_recurring", finished_at: nil).find_each(&:destroy); SolidQueue::Job.clear_finished_in_batches' — verify: SolidQueue::ReadyExecution.count == 0 (idle), SolidQueue::Job.count < 100
+3. [OP] Off-box backup: add callscreen to compose-host/backup/dump-all.sh — docker exec callscreen bin/rails db:backup, then rsync/borg storage/backups/ + storage/recordings + storage/greetings + storage/voice_samples off-box — verify: restore latest snapshot to /tmp, sqlite3 "PRAGMA integrity_check" → ok
+4. Whisper hardening in compose.yml: pin fedirz/faster-whisper-server image by digest, add healthcheck (curl -f http://localhost:8000/health || /v1/models), callscreen depends_on faster-whisper service_healthy — verify: docker inspect faster_whisper → "healthy"
+5. External uptime probe [OP]: healthchecks.io/UptimeRobot on https://phone.example.com/up every 5 min, alert channel ≠ ntfy — verify: pause container in a window, alert arrives
+6. Daily synthetic-call canary: host cron 07:30 Europe/Rome runs bin/synthetic_call --watch against prod; non-zero exit → ntfy + email — verify: run once manually, call row appears via /e2e/call
+7. Pin Python TTS chain in Dockerfile: uv lock (torch, chatterbox-tts, kokoro, soundfile, numpy), commit lockfile; add pip ecosystem to .github/dependabot.yml — verify: docker build reproducible, CI green
+
+STEPS (phase 1 — a stranger can be onboarded; detail in body)
+8. Email foundation: SMTP creds via operator secret store → compose env; config.action_mailer in production.rb (real host, not example.com); Devise :recoverable (+ later :confirmable); mailer sender in config/initializers/devise.rb — verify: password-reset mail delivered end-to-end
+9. Invitation onboarding: super-admin creates tenant → invite email → set-password → guided wizard (notification channel, dedicated_number, carrier MMI codes rendered from tenant.dedicated_number with carrier picker TIM/Vodafone/WindTre/Iliad, live "test call" verification) — verify: fresh tenant activates without console access
+10. Email notification channel: NotificationRouter in NotifyJob — per-tenant channel enum (ntfy|email|both); voicemail mail = transcript + secure recording link — verify: test tenant receives screened-call email
+11. Finish Italian i18n of admin views (55 hardcoded English headings; profiles/edit, contacts/_form, rules/*, phrases/*, costs) via t() + it.yml/en.yml parity — verify: grep for hardcoded headings in app/views/admin → 0; suite green
+12. De-hardcode operator assumptions: require per-tenant forward_back_number at onboarding (drop ENV FORWARD_NUMBER fallback for non-default tenants); ntfy ENV fallback only for default tenant; tenant-editable time_zone + tod_* + spam_response_mode in profile — verify: new tenant works with zero operator ENV inheritance
+
+STEPS (phase 2 — they can pay; body §phase-2)
+13. Stripe: Plan model + Checkout + customer portal + Stripe Tax (EU VAT), webhook → tenant.plan/active; suspend on non-payment (screening falls back to plain forward)
+14. Quota enforcement on existing metering (calls/month, billable_seconds) with grace degradation + usage bar in admin
+15. Telnyx number auto-provisioning at signup (number search/order API) → dedicated_number
+16. Public landing + pricing + privacy policy + DPA (data-processor role, recording disclosure in greeting)
+
+POSTCONDITIONS
+- Prod runs d7efe77+; ready-queue backlog 0; watchdog alerts on >15-min stale ready jobs
+- Off-box restore drill documented in docs/ops/security-and-backup-runbook.md and rehearsed
+- A stranger can go invite → forwarded number → screened call → notification without operator console work
+- Paying tenants: Stripe subscription active, quota visible, suspension path tested
+
+ROLLBACK
+- App: git revert <commit> && docker compose build/up (single container; boot runs db:backup pre-migration)
+- DB: restore storage/backups/<latest> over storage/production.sqlite3 with container stopped
+- Stripe: feature-flag billing enforcement off (tenant.active stays operator-controlled)
+
+SEE BODY FOR
+Positioning (Italian professionals first), unit economics (~93% gross margin at €9.90/mo),
+scale ceiling analysis (SQLite fine to ~100 tenants), phase-3 bets (web push, live transfer,
+CRM webhooks, daily digest), GDPR/legal notes, metrics.
+</template>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<main id="main">
+<article class="artifact">
+<header>
+  <div class="kicker"><span class="dot"></span>plan <span class="sep">&middot;</span> callscreen</div>
+  <h1>Callscreen Productization Roadmap — July 2026</h1>
+  <p class="lede">The engineering is ahead of the product: to become a real service, Callscreen needs an ops floor (off-box backups, canary), a self-serve lifecycle (email, invitations, onboarding wizard), and only then billing — in that order.</p>
+  <div class="meta-strip">
+    <span>2026-07-10</span>
+    <span class="sep">&middot;</span>
+    <span class="tag">status:open</span>
+    <span class="sep">&middot;</span>
+    <span class="tag">project:callscreen</span>
+  </div>
+</header>
+
+<section>
+<h2 id="where-it-stands">Where it stands (verified 2026-07-10)</h2>
+<p>Prod at <code>phone.example.com</code> is healthy and in active use: 136 calls total, 10 in the last 7 days, last inbound today 14:02 CEST, 2 tenants. Container built 2026-06-14 matches <code>main</code>. Unit suite 581 tests / 0 failures, brakeman clean, CI enforces an 80/65 coverage floor. Two prod defects were found during this audit and fixed in commit <code>d7efe77</code>:</p>
+<ul>
+<li><strong>Recurring-queue rot.</strong> <code>clear_solid_queue_finished_jobs</code> (the only <code>command:</code>-style task in <code>config/recurring.yml</code>) had no <code>queue:</code> key, so its wrapper jobs landed in <code>solid_queue_recurring</code> — a queue no worker in <code>config/queue.yml</code> consumes. 1,583 jobs accumulated unprocessed since 2026-05-05 and 24,349 finished jobs were never cleared. Fixed by routing to <code>:default</code>; <code>app/jobs/operator_health_watchdog_job.rb</code> now alerts on any ready execution older than 15 min, so a dead consumer surfaces within the hour instead of never.</li>
+<li><strong>Voicemail audio loss on URL expiry.</strong> Telnyx's <code>recording.saved</code> URL is a short-lived pre-signed S3 link; only <code>ScreeningJob</code> downloaded it. Call 184 (2026-07-09 23:40) lost its audio when retries outlasted the link (terminal HTTP 403 at <code>app/services/recording_downloader.rb</code>) — the fallback notification pointed at an unplayable recording. New <code>app/jobs/persist_recording_job.rb</code> captures audio immediately on <code>recording.saved</code> (both branches of <code>handle_recording_saved</code> in <code>app/controllers/telnyx_controller.rb</code>); the downloader now reuses the local copy and writes atomically.</li>
+</ul>
+<div class="callout callout--warn"><span class="callout-label">Operator action pending</span>Deploy of <code>d7efe77</code>, the 1,583-job backlog purge, and a possible Telnyx-API recovery of call 184's recording all need operator approval — the permission gate correctly blocks unattended prod mutation. Exact commands are in the kb-prompt, steps 1–2.</div>
+</section>
+
+<section>
+<h2 id="the-strategic-call">The strategic call: who is this for?</h2>
+<p>The carrier-forwarding architecture is the moat. A customer keeps their number and their phone; activation is one MMI code (<code>**61*&lt;screener&gt;#</code>) — no porting, no app on the call path, works on any handset. That favors one segment decisively:</p>
+<table>
+<tr><th>Segment</th><th>Willingness to pay</th><th>Fit</th></tr>
+<tr><td><strong>Italian professionals &amp; micro-businesses</strong> (lawyers, doctors, artisans, agents) drowning in spam and missing real calls</td><td>€10–30/mo — a missed client costs more</td><td><strong>Target.</strong> Screening + voicemail + transcript + instant push is a "segretaria virtuale" at 1/50 the cost</td></tr>
+<tr><td>Italian consumers annoyed by spam</td><td>€0–3/mo</td><td>Later. Mass GTM, thin margins, support burden</td></tr>
+<tr><td>Friends &amp; family</td><td>€0</td><td>Current state; good beta pool</td></tr>
+</table>
+<p><strong>Recommendation:</strong> invitation-only beta of 5–10 real professionals at €0 for a month (validates onboarding + catch-rate), then Stripe at ~€9.90/mo personal / ~€19.90/mo professional (voice clone, rules, priority). Do not build open self-signup first — invitations keep the abuse surface tiny while the lifecycle plumbing matures.</p>
+<h3 id="unit-economics">Unit economics</h3>
+<p>Per tenant/month at 100 screened calls averaging 90 s: Telnyx DID ~$1.00 + inbound ~$0.45; Moonshot classification ~$0.02 (non-reasoning 8k, ~2 s/call); Whisper + TTS self-hosted ≈ $0. Marginal cost ≈ <strong>$1.50/tenant</strong> → ~93% gross margin at €9.90. The binding constraint is not cost, it's onboarding friction and trust.</p>
+</section>
+
+<section>
+<h2 id="phase-0">Phase 0 — protect what exists (this week)</h2>
+<p>One host holds everything; the ops audit's verdict was blunt: the app layer is mature, the host perimeter is not.</p>
+<ul>
+<li><strong>Off-box backup — the single riskiest gap.</strong> <code>db:backup</code> (WAL-safe <code>VACUUM INTO</code>) writes to <code>storage/backups/</code> on the <em>same bind mount</em> as <code>production.sqlite3</code>, and <code>compose-host/backup/dump-all.sh</code> covers other host services but has zero callscreen entries. A disk failure today is total, unrecoverable loss of all tenants, calls, audit history, and voicemail audio. Add callscreen to the borg job; rehearse a restore.</li>
+<li><strong>Whisper sidecar:</strong> unpinned <code>:latest-cpu</code> image, no healthcheck, no <code>depends_on</code>. A silently broken Whisper degrades every screening to "unknown". Pin by digest + healthcheck + startup ordering.</li>
+<li><strong>Proactive detection:</strong> external uptime probe on <code>/up</code> (alert channel independent of ntfy — the watchdog currently self-routes to the same ntfy that could be the failed component) + a daily <code>bin/synthetic_call</code> canary cron. Today, regressions are only caught reactively.</li>
+<li><strong>Python TTS supply chain:</strong> torch/chatterbox/kokoro unpinned, no lockfile, no pip audit in CI. Lock with uv, add the pip ecosystem to Dependabot.</li>
+</ul>
+</section>
+
+<section>
+<h2 id="phase-1">Phase 1 — a stranger can be onboarded (2–3 weeks)</h2>
+<p>Today a new tenant requires the operator to: create the account with a typed password, set <code>dedicated_number</code>, hand-walk carrier MMI codes (the in-app instructions render the <em>operator's own</em> Modena number for every tenant), explain the ntfy app, and run <code>bin/clone_render</code> on the host. Each is a fixable product gap:</p>
+<ul>
+<li><strong>Email foundation first — everything else depends on it.</strong> The app sends no email at all: the mailer host in <code>config/environments/production.rb</code> is literally <code>example.com</code>, the Devise sender in <code>config/initializers/devise.rb</code> is <code>please-change-me@example.com</code>, and <code>:recoverable</code>/<code>:confirmable</code> are off in <code>app/models/tenant.rb</code> (a forgotten password is an operator ticket). SMTP creds from operator secret store → compose env, enable password reset, then confirmable.</li>
+<li><strong>Invitation flow + onboarding wizard.</strong> Invite email → set password → wizard: (1) pick notification channel, (2) see <em>your</em> forwarding number, (3) carrier picker (TIM/Vodafone/WindTre/Iliad) rendering the correct MMI codes from <code>tenant.dedicated_number</code>, (4) a "verify forwarding" button that watches for the test call end-to-end — the e2e inspector plumbing to build this already exists.</li>
+<li><strong>Email as a notification channel.</strong> ntfy requires installing an app and pasting a topic URL — a real barrier for the target segment. A per-tenant channel enum (<code>ntfy|email|both</code>) routed in <code>app/jobs/notify_job.rb</code>, with voicemail transcript + secure recording link, makes notifications work for anyone with a mailbox. (Web push via the existing <code>public/sw.js</code> PWA shell is the better long-term answer; it's phase 3.)</li>
+<li><strong>Finish Italian i18n of the admin console.</strong> The primary market is Italian; the console is ~80% hardcoded English (55 English headings; <code>app/views/admin/profiles/edit.html.erb</code>, <code>rules</code>, <code>phrases</code>, <code>costs</code> have zero <code>t()</code> calls, and <code>config/locales/it.yml</code> covers a fraction of <code>config/locales/en.yml</code>). Caller-facing audio is already fully bilingual via <code>app/models/greeting_catalog.rb</code> — the console must match.</li>
+<li><strong>De-hardcode the single-operator assumptions:</strong> per-tenant <code>forward_back_number</code> required at onboarding (no silent inheritance of <code>ENV["FORWARD_NUMBER"]</code>), ntfy ENV fallback restricted to the default tenant, tenant-editable <code>time_zone</code>/<code>tod_*</code>/<code>spam_response_mode</code> (currently console-only), and in-container voice-clone rendering so the flash message stops telling users to run a host script.</li>
+</ul>
+</section>
+
+<section>
+<h2 id="phase-2">Phase 2 — they can pay (2–4 weeks)</h2>
+<ul>
+<li><strong>Stripe Checkout + customer portal + Stripe Tax</strong> (EU VAT/SCA handled for you). A small <code>Plan</code> model; webhook sets <code>tenant.plan</code> and <code>tenant.active</code>. Non-payment degrades gracefully: screening off, plain forward-through on — never dead air for the tenant's callers.</li>
+<li><strong>Quota enforcement on metering that already exists.</strong> Per-call <code>billable_seconds</code>, Telnyx and Moonshot cost columns are recorded today via <code>app/lib/pricing.rb</code>; <code>app/controllers/admin/costs_controller.rb</code> reports them. Add monthly caps per plan with a usage bar and soft-degrade past quota.</li>
+<li><strong>Automatic number provisioning.</strong> Telnyx's number search/order API can buy a DID and set <code>dedicated_number</code> at signup — removing the last manual provisioning step.</li>
+<li><strong>Public surface + legal.</strong> There is no marketing page (root redirects to login). Landing + pricing + privacy policy + DPA. As a service you are a GDPR data <em>processor</em> for third-party callers' audio: the greeting should disclose recording, retention defaults (30 days, already implemented in <code>CleanupRecordingsJob</code>) must be stated, and a data-subject export/erasure runbook written.</li>
+</ul>
+</section>
+
+<section>
+<h2 id="phase-3">Phase 3 — product depth bets (after first paying users)</h2>
+<ul>
+<li><strong>Web push in the PWA</strong> — the service worker shell exists; add a push handler + VAPID + a PushSubscription model, and ntfy becomes the power-user option instead of the requirement.</li>
+<li><strong>Live transfer for verified-legit callers</strong> — bridge states (<code>transfer_dialing</code>/<code>bridged</code>) already exist; "sounds legitimate → ring the tenant now, else voicemail" is the strongest professional-tier feature.</li>
+<li><strong>Daily digest email</strong> — screened/blocked/voicemail summary; cheap retention driver.</li>
+<li><strong>Shared spam intelligence as network effect</strong> — the railsdav-backed cross-tenant spam DB and allow-propagation already exist; every new tenant makes screening better for all. Surface it ("blocked for 214 users this week").</li>
+<li><strong>Calendar-aware screening</strong> — CalDAV is in the stack; "in a meeting → screen harder, after hours → voicemail only."</li>
+<li><strong>Per-tenant outbound webhooks/API</strong> — push screened-call events into a CRM; opens the door to agencies managing multiple tenants.</li>
+</ul>
+<div class="callout"><span class="callout-label">Non-goal</span>A native Android/iOS call-screening app. The zero-app carrier-forwarding path is the differentiator; an app on the call path re-enters a market Google/Truecaller own.</div>
+</section>
+
+<section>
+<h2 id="scale-posture">Scale posture</h2>
+<p>Do not re-platform for scale now. The webhook path is light; SQLite WAL + single-writer with 3 default-queue threads comfortably serves ~50–100 tenants at 10–50 calls/day each. Real ceilings, in the order they will appear: Whisper CPU throughput on concurrent calls (medium model ≈ real-time on CPU — first knob: <code>JOB_CONCURRENCY</code>, second: GPU or a smaller model for screening), TTS renders sharing the box, then the single-node deploy blip. When off-box durability is built (phase 0), prefer <a href="https://litestream.io/">Litestream</a> streaming replication — it solves backup <em>and</em> becomes the stepping stone to a warm standby, without leaving SQLite.</p>
+</section>
+
+<section>
+<h2 id="metrics">Metrics that decide "is it working"</h2>
+<ul>
+<li><strong>Activation:</strong> % of invited tenants whose forwarding-verification call succeeds (wizard step 4) within 48 h.</li>
+<li><strong>Catch quality:</strong> operator-correction rate — <code>mark_spam</code>/<code>mark_legit</code> actions ÷ screened calls (both already audit-logged). Below ~5% corrections is a sellable screener.</li>
+<li><strong>Engagement:</strong> screened calls per tenant per week (current baseline: 10/wk across 2 tenants).</li>
+<li><strong>Reliability:</strong> watchdog-quiet days per month; canary pass rate.</li>
+<li><strong>Revenue truth:</strong> margin per tenant from the existing per-call cost columns vs. plan price.</li>
+</ul>
+</section>
+
+<section>
+<h2 id="verification">Verification &amp; rollback</h2>
+<p>Each phase lands behind the existing safety net: 581-test unit suite + brakeman + rubocop + coverage floor in CI, the 7-scenario live e2e suite (<code>rake e2e:run</code>) against prod with the suppressed-notification e2e tenant, and <code>bin/synthetic_call --watch</code> for one-shot verification. Rollback: single-container <code>git revert</code> + rebuild; DB restores from the boot-time pre-migration snapshot (off-box after phase 0). Billing enforcement ships behind a flag so suspension logic can be disabled without a deploy.</p>
+</section>
+
+</article>
+</main>
+</body>
+</html>
