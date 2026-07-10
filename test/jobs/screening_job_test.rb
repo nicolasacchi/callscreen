@@ -351,6 +351,9 @@ class ScreeningJobTest < ActiveJob::TestCase
   end
 
   test "RecordingDownloader 5xx is transient: raises, deferred to retry (not :failed per-attempt)" do
+    # No local copy yet (PersistRecordingJob hasn't won the race) — otherwise
+    # the downloader's existing-file short-circuit sidesteps the 5xx entirely.
+    FileUtils.rm_f(@download_path)
     stub_request(:get, "https://api.telnyx.com/v2/recordings/abc.wav")
       .to_return(status: 500, body: "")
     assert_raises(RecordingDownloader::TransientError) do

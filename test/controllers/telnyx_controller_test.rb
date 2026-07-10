@@ -548,7 +548,9 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     speak_stub = stub_action(CCID, :speak)  # no pre-rendered audio in test
 
     assert_enqueued_jobs 1, only: ScreeningJob do
-      post_event recording_saved_payload(url: "https://api.telnyx.com/v2/recordings/abc.wav")
+      assert_enqueued_jobs 1, only: PersistRecordingJob do
+        post_event recording_saved_payload(url: "https://api.telnyx.com/v2/recordings/abc.wav")
+      end
     end
     # Controller plays a brief goodbye on the still-open leg so the caller
     # doesn't hear seconds of silence while Whisper runs.
@@ -576,7 +578,9 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     hangup_stub = stub_action(CCID, :hangup)
 
     assert_enqueued_jobs 1, only: TranscribeRecordingJob do
-      post_event recording_saved_payload(url: "https://api.telnyx.com/v2/recordings/vm.wav")
+      assert_enqueued_jobs 1, only: PersistRecordingJob do
+        post_event recording_saved_payload(url: "https://api.telnyx.com/v2/recordings/vm.wav")
+      end
     end
     assert_requested hangup_stub
     assert_equal "completed", Call.find_by!(call_control_id: CCID).status
@@ -587,8 +591,10 @@ class TelnyxControllerTest < ActionDispatch::IntegrationTest
     stub_action(CCID, :speak)  # the immediate goodbye on first webhook
 
     assert_enqueued_jobs 1, only: ScreeningJob do
-      post_event recording_saved_payload(url: "https://x/a.wav")
-      post_event recording_saved_payload(url: "https://x/a.wav")
+      assert_enqueued_jobs 1, only: PersistRecordingJob do
+        post_event recording_saved_payload(url: "https://x/a.wav")
+        post_event recording_saved_payload(url: "https://x/a.wav")
+      end
     end
   end
 

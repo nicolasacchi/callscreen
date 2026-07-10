@@ -34,10 +34,11 @@ class OperatorHealthWatchdogJobTest < ActiveJob::TestCase
     assert_not_requested :post, /./
   end
 
-  # NB: the Solid Queue dead set lives in a separate queue DB not present in the
-  # test connection (solid_queue_dead_count is guarded + rescues to 0), so the
-  # windowed dead-set count can't be exercised here — it mirrors the failed_calls
-  # window above and is verified against the live dead set on deploy.
+  # NB: the Solid Queue dead set and ready executions live in a separate queue
+  # DB not present in the test connection (solid_queue_dead_count and
+  # solid_queue_stale_ready_count are guarded + rescue to 0), so those counts
+  # can't be exercised here — they mirror the failed_calls window above and are
+  # verified against the live queue DB on deploy.
 
   test "alerts when railsdav is configured but unreachable" do
     ENV["RAILSDAV_API_URL"]   = "http://railsdav.test:3000"

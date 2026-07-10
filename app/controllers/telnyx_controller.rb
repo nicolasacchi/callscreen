@@ -237,6 +237,9 @@ class TelnyxController < ApplicationController
       # NEVER classified or notified — the worst silent failure in the product.
       # So enqueue, then play the goodbye inside a guard that can't block it.
       ScreeningJob.perform_later(call.id)
+      # Capture the audio while the short-lived pre-signed URL is still valid,
+      # independent of Whisper/classification health (see PersistRecordingJob).
+      PersistRecordingJob.perform_later(call.id)
       begin
         play_goodbye(call, phrase: "goodbye_spam")
       rescue StandardError => e
@@ -247,6 +250,7 @@ class TelnyxController < ApplicationController
               .update_all(attrs.merge(status: Call.statuses[:completed], flow_state: "done")).positive?
       # Legacy whitelisted-voicemail path (greeting + record, no screening).
       TranscribeRecordingJob.perform_later(call.id)
+      PersistRecordingJob.perform_later(call.id)
       cc_client.hangup(ccid)
     else
       # Already advanced past the recording states — a duplicate or stale

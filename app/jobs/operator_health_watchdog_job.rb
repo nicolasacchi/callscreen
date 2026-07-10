@@ -10,10 +10,16 @@ class OperatorHealthWatchdogJob < ApplicationJob
 
   WINDOW = 1.hour
 
+  # A ready execution older than this means its queue has no live consumer
+  # (worker died, or — the incident that motivated the check — a recurring
+  # task enqueued into a queue no worker in config/queue.yml listens to).
+  STALE_READY_AFTER = 15.minutes
+
   def perform(window: WINDOW)
     since = window.ago
 
     dead_set      = solid_queue_dead_count(since)
+    stale_ready   = solid_queue_stale_ready_count
     failed_calls  = Call.where(status: :failed).where(updated_at: since..).count
     failed_renders = Phrase.where(render_status: "failed").where(updated_at: since..).count
     stuck_calls   = Call.where(flow_state: SweepStuckCallsJob::SWEEPABLE_STATES, hung_up_at: nil)
@@ -25,12 +31,13 @@ class OperatorHealthWatchdogJob < ApplicationJob
 
     # railsdav_down contributes no count, so fold it into the total or the
     # zero-guard below would suppress a reachability-only alert.
-    total = dead_set + failed_calls + failed_renders + stuck_calls + (railsdav_down ? 1 : 0)
+    total = dead_set + stale_ready + failed_calls + failed_renders + stuck_calls + (railsdav_down ? 1 : 0)
     return if total.zero?
 
     lines = []
     lines << "Railsdav non raggiungibile"                           if railsdav_down
     lines << "Job falliti (#{human_window}): #{dead_set}"           if dead_set.positive?
+    lines << "Job in coda senza worker (>15 min): #{stale_ready}"   if stale_ready.positive?
     lines << "Chiamate fallite (#{human_window}): #{failed_calls}"   if failed_calls.positive?
     lines << "Render falliti (#{human_window}): #{failed_renders}"   if failed_renders.positive?
     lines << "Chiamate bloccate: #{stuck_calls}"        if stuck_calls.positive?
@@ -63,6 +70,19 @@ class OperatorHealthWatchdogJob < ApplicationJob
     SolidQueue::FailedExecution.where(created_at: since..).count
   rescue StandardError => e
     Rails.logger.error("OperatorHealthWatchdogJob: dead-set count failed: #{e.class}: #{e.message}")
+    0
+  end
+
+  # Ready executions that have sat unclaimed past STALE_READY_AFTER. Unlike the
+  # dead set this needs no time window: processed executions vanish, so a
+  # non-zero count means the problem is live RIGHT NOW (dead worker, or a job
+  # routed to a queue nothing consumes). Guarded like the dead-set count so a
+  # Solid Queue rename degrades to 0 instead of crashing the watchdog.
+  def solid_queue_stale_ready_count
+    return 0 unless defined?(SolidQueue::ReadyExecution)
+    SolidQueue::ReadyExecution.where(created_at: ..STALE_READY_AFTER.ago).count
+  rescue StandardError => e
+    Rails.logger.error("OperatorHealthWatchdogJob: stale-ready count failed: #{e.class}: #{e.message}")
     0
   end
 

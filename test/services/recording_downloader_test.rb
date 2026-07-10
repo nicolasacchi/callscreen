@@ -70,6 +70,31 @@ class RecordingDownloaderTest < ActiveSupport::TestCase
     assert_not_kind_of RecordingDownloader::TransientError, err
   end
 
+  # --- existing-file short-circuit (URL-expiry resilience) ---
+
+  test "returns the already-persisted file without re-downloading" do
+    # PersistRecordingJob may have saved the audio before ScreeningJob runs;
+    # by then the pre-signed URL can be expired (403), so a re-download must
+    # not even be attempted.
+    @call.update!(recording_url: "https://api.telnyx.com/v2/recordings/rec.wav")
+    path = Rails.root.join("storage/recordings/rd-test-1.wav")
+    File.binwrite(path, "WAV-ON-DISK")
+
+    assert_equal path.to_s, RecordingDownloader.fetch(@call)
+    assert_not_requested :get, /./
+  end
+
+  test "an empty (partial-write) file does not short-circuit the download" do
+    @call.update!(recording_url: "https://api.telnyx.com/v2/recordings/rec.wav")
+    path = Rails.root.join("storage/recordings/rd-test-1.wav")
+    FileUtils.touch(path)
+    stub_request(:get, @call.recording_url).to_return(status: 200, body: "WAV")
+
+    RecordingDownloader.fetch(@call)
+
+    assert_equal "WAV", File.binread(path)
+  end
+
   # --- SSRF via redirect (SEC-3) ---
 
   test "does not follow redirects; a 30x from a trusted host is a hard failure" do

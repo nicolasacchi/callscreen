@@ -44,6 +44,11 @@ class RecordingDownloader
     raise "Path traversal blocked for call_sid #{@call.call_sid.inspect}" \
       unless expanded.start_with?(RECORDINGS_DIR.to_s + "/")
 
+    # Reuse an already-persisted copy (PersistRecordingJob races ScreeningJob
+    # to this same path). Crucial when the pre-signed URL has since expired:
+    # a re-download would 403 even though the audio is safe on disk.
+    return expanded if File.size?(expanded)
+
     uri = URI.parse(@call.recording_url.to_s)
     raise "Invalid recording URL host: #{uri.host.inspect}" \
       unless uri.host && TRUSTED_HOST_PATTERNS.any? { |re| uri.host.match?(re) }
@@ -78,7 +83,16 @@ class RecordingDownloader
       raise "Download failed: HTTP #{code}"
     end
 
-    File.binwrite(expanded, response.body)
+    # Write-then-rename so two concurrent fetchers (or a killed worker) can
+    # never leave a truncated WAV at the final path — rename within the same
+    # directory is atomic, and last-complete-write wins.
+    tmp = "#{expanded}.#{SecureRandom.hex(4)}.tmp"
+    begin
+      File.binwrite(tmp, response.body)
+      File.rename(tmp, expanded)
+    ensure
+      FileUtils.rm_f(tmp)
+    end
     expanded
   end
 end
