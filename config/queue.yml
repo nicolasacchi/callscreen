@@ -6,10 +6,16 @@ default: &default
     # Foreground queue: ScreeningJob, NotifyJob, VoiceCloneRenderJob — keep 3
     # threads dedicated so a render storm on the rendering queue can't starve
     # call processing.
+    #
+    # polling_interval 0.5, not 0.1: each poll that finds work issues a claim
+    # WRITE against the single-writer queue SQLite DB, and 3 threads polling 10×/s
+    # multiplied write contention during the 2026-07-16 lock storm that wedged
+    # the worker. 0.5 s cuts that 5× while adding only ~0.4 s worst-case pickup
+    # latency — negligible against the multi-second Whisper+LLM screening step.
     - queues: "default"
       threads: 3
       processes: <%= ENV.fetch("JOB_CONCURRENCY", 1) %>
-      polling_interval: 0.1
+      polling_interval: 0.5
     # Background render queue: PhraseRenderJob, PhraseCleanupJob. Single
     # thread so we don't oversubscribe the CPU during bulk renders.
     - queues: "rendering"

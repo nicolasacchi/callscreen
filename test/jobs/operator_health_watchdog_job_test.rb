@@ -34,6 +34,29 @@ class OperatorHealthWatchdogJobTest < ActiveJob::TestCase
     assert_not_requested :post, /./
   end
 
+  test "skips a backlog-drain run so a recovered stall can't flood the operator" do
+    # A run enqueued long before it executes is one of the hourly jobs that piled
+    # up while the worker was wedged, all draining at once. Even with a real
+    # problem to report, it must NOT push — otherwise every backlogged hour fires
+    # its own ntfy (the exact flood this guard removes).
+    @tenant.calls.create!(call_sid: "hw-3", call_control_id: "hw-3",
+                          from_number: "+390000000003", status: :failed)
+    job = OperatorHealthWatchdogJob.new
+    job.enqueued_at = 2.hours.ago
+    job.perform
+    assert_not_requested :post, /./
+  end
+
+  test "a run enqueued just now still pushes" do
+    @tenant.calls.create!(call_sid: "hw-4", call_control_id: "hw-4",
+                          from_number: "+390000000004", status: :failed)
+    stub_request(:post, @url).to_return(status: 200)
+    job = OperatorHealthWatchdogJob.new
+    job.enqueued_at = 5.seconds.ago
+    job.perform
+    assert_requested :post, @url
+  end
+
   # NB: the Solid Queue dead set and ready executions live in a separate queue
   # DB not present in the test connection (solid_queue_dead_count and
   # solid_queue_stale_ready_count are guarded + rescue to 0), so those counts

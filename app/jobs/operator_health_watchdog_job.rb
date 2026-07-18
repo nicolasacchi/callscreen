@@ -15,7 +15,24 @@ class OperatorHealthWatchdogJob < ApplicationJob
   # task enqueued into a queue no worker in config/queue.yml listens to).
   STALE_READY_AFTER = 15.minutes
 
+  # A run that executes this long after it was enqueued is a backlog-drain run:
+  # the worker was stalled and just came back, so every hourly execution that
+  # piled up unprocessed now runs back-to-back. Firing one ntfy digest per
+  # backlogged hour flooded the operator with ~40 near-identical pushes in 17 s
+  # when a 2026-07-16 SQLite lock storm wedged the worker for ~1.5 days. A
+  # healthy run executes within seconds of enqueue, so this threshold is far
+  # above any legitimate scheduling delay.
+  STALE_DISPATCH_AFTER = 10.minutes
+
   def perform(window: WINDOW)
+    # Drop backlog-drain executions: the freshly-scheduled run reports the real
+    # current state, so skipping the stale pile loses no signal — it only spares
+    # the operator the flood. (nil enqueued_at ⇒ run inline, e.g. tests ⇒ keep.)
+    if backlog_drain_run?
+      Rails.logger.info("OperatorHealthWatchdogJob: skipping backlog-drain run (enqueued_at=#{enqueued_at.inspect})")
+      return
+    end
+
     since = window.ago
 
     dead_set      = solid_queue_dead_count(since)
@@ -54,6 +71,19 @@ class OperatorHealthWatchdogJob < ApplicationJob
   end
 
   private
+
+  # True when this execution was enqueued long enough ago to be a drain of a
+  # stalled queue rather than its scheduled hourly run. Fail open (treat as a
+  # normal run) on a missing/unparseable timestamp so a quirk here can never
+  # silence a real alert.
+  def backlog_drain_run?
+    return false if enqueued_at.blank?
+
+    Time.current - enqueued_at.to_time > STALE_DISPATCH_AFTER
+  rescue StandardError => e
+    Rails.logger.warn("OperatorHealthWatchdogJob: dispatch-staleness check failed: #{e.class}: #{e.message}")
+    false
+  end
 
   def human_window
     "ultima ora"
