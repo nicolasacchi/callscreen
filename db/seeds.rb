@@ -1,50 +1,10 @@
-operator_email = ENV.fetch("ADMIN_EMAIL", "admin@callscreen.local")
-
-# The single bootstrap tenant is the operator: super-admin + default tenant
-# (used for fallback when an inbound call cannot be attributed to any other
-# row via dedicated_number or History-Info).
-operator_slug = operator_email.split("@").first.downcase.gsub(/[^a-z0-9._-]/, "-")
-
-operator = Tenant.find_or_initialize_by(email: operator_email)
-
-# Set the password ONLY when first creating the operator. db:seed runs on every
-# container boot, and the old `operator.password ||= ENV[...]` reset the
-# operator's password to ADMIN_PASSWORD on every deploy (password is a Devise
-# virtual attr that always reads back nil). ADMIN_PASSWORD is therefore required
-# only to seed a NEW operator — an existing operator's password is never touched.
-if operator.new_record?
-  password = ENV.fetch("ADMIN_PASSWORD") do
-    raise "ADMIN_PASSWORD is required to seed the initial operator" if Rails.env.production?
-    "changeme123!"
-  end
-  operator.password = password
-  operator.password_confirmation = password
-end
-operator.slug          ||= operator_slug
-operator.name          ||= operator_slug
-operator.default_tenant  = true
-operator.admin           = true
-operator.active          = true
-operator.save!
-
-Setting::DEFAULTS.each do |key, value|
-  Setting.find_or_create_by!(key: key) do |s|
-    s.value = value
-    s.description = key.humanize
-  end
-end
-
-# --- Shared system + greeting phrases (tenant_id: nil) ---------------------
-# Fresh databases are created via `db:schema:load`, which does NOT run the
-# data migrations (populate_system_phrases / seed_spam_response_phrases). Without
-# this block a from-scratch deploy ships with ZERO shared phrases, which breaks
-# PhrasePoolResolver's tier-7 fallback (resolve! could return nil) and
-# Tenant#greeting_variant validation. See the review finding DM-9.
+# Shared system + greeting phrases MUST be inserted before any Tenant#save!.
+# Tenant#greeting_variant_in_catalog requires Phrase rows; a schema-only DB
+# (db:schema:load / db:test:prepare) has none. See DM-9.
 #
-# Idempotent: existing slugs are skipped, so this is a no-op on already-migrated
-# databases and safe to run on every container boot. `insert_all` bypasses the
-# Phrase after_commit render hook and validations (seed data is trusted); we
-# enqueue renders explicitly afterwards so a fresh deploy builds its WAVs.
+# Idempotent: existing slugs are skipped. insert_all bypasses the Phrase
+# after_commit render hook; we enqueue renders afterwards so a fresh deploy
+# builds WAVs.
 now = Time.current
 phrase_rows = []
 
@@ -87,3 +47,39 @@ if phrase_rows.any?
   end
   Rails.logger.info("seeds: created #{phrase_rows.size} shared phrases")
 end
+
+Setting::DEFAULTS.each do |key, value|
+  Setting.find_or_create_by!(key: key) do |s|
+    s.value = value
+    s.description = key.humanize
+  end
+end
+
+operator_email = ENV.fetch("ADMIN_EMAIL", "admin@callscreen.local")
+
+# The single bootstrap tenant is the operator: super-admin + default tenant
+# (used for fallback when an inbound call cannot be attributed to any other
+# row via dedicated_number or History-Info).
+operator_slug = operator_email.split("@").first.downcase.gsub(/[^a-z0-9._-]/, "-")
+
+operator = Tenant.find_or_initialize_by(email: operator_email)
+
+# Set the password ONLY when first creating the operator. db:seed runs on every
+# container boot, and the old `operator.password ||= ENV[...]` reset the
+# operator's password to ADMIN_PASSWORD on every deploy (password is a Devise
+# virtual attr that always reads back nil). ADMIN_PASSWORD is therefore required
+# only to seed a NEW operator — an existing operator's password is never touched.
+if operator.new_record?
+  password = ENV.fetch("ADMIN_PASSWORD") do
+    raise "ADMIN_PASSWORD is required to seed the initial operator" if Rails.env.production?
+    "changeme123!"
+  end
+  operator.password = password
+  operator.password_confirmation = password
+end
+operator.slug          ||= operator_slug
+operator.name          ||= operator_slug
+operator.default_tenant  = true
+operator.admin           = true
+operator.active          = true
+operator.save!
