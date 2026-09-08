@@ -11,6 +11,7 @@ require "json"
 require "net/http"
 require "uri"
 require "shellwords"
+require "open3"
 require "securerandom"
 
 $LOAD_PATH.unshift File.expand_path("../../lib", __dir__)
@@ -143,17 +144,17 @@ class E2ETest < Minitest::Test
     end
 
     def docker_runner(snippet)
-      escaped = Shellwords.escape(snippet)
-      raw =
-        if ENV["E2E_RUNNER"] == "local"
-          # Inherit RAILS_ENV from the caller (CI: test). Do not merge stderr:
-          # 04_ntfy_action_test captures stdout as the MessageVerifier token.
-          `bin/rails runner #{escaped}`
-        else
-          `docker exec -i callscreen bin/rails runner #{escaped} 2>&1`
-        end
-      raise "docker_runner failed:\n#{raw}" unless $?.success?
-      raw
+      if ENV["E2E_RUNNER"] == "local"
+        stdout, stderr, status = Open3.capture3({ "RAILS_ENV" => ENV.fetch("RAILS_ENV", "test") }, "bin/rails", "runner", snippet)
+        raw = stdout
+        raise "docker_runner failed:\n#{stderr}\n#{stdout}" unless status.success?
+        raw
+      else
+        escaped = Shellwords.escape(snippet)
+        raw = `docker exec -i callscreen bin/rails runner #{escaped} 2>&1`
+        raise "docker_runner failed:\n#{raw}" unless $?.success?
+        raw
+      end
     end
   end
 

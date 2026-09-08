@@ -25,7 +25,7 @@ class HealthControllerTest < ActionDispatch::IntegrationTest
   Fake = Struct.new(:kind, :last_heartbeat_at)
 
   test "GET /up returns 503 when every worker heartbeat is stale" do
-    stub_processes([Fake.new("Worker", 10.minutes.ago)])
+    stub_processes([ Fake.new("Worker", 10.minutes.ago) ])
     get "/up"
     assert_response :service_unavailable
   ensure
@@ -33,7 +33,7 @@ class HealthControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "GET /up returns 200 when a worker heartbeat is fresh" do
-    stub_processes([Fake.new("Worker", 5.seconds.ago)])
+    stub_processes([ Fake.new("Worker", 5.seconds.ago) ])
     get "/up"
     assert_response :ok
   ensure
