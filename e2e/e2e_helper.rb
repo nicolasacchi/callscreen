@@ -3,7 +3,8 @@
 # Live e2e test base class. Loaded once per test file via
 # `require_relative "e2e_helper"`. The test process is HTTP-only Ruby —
 # no Rails env booted in-process. State mutation goes via docker exec
-# to the production Rails runner; reads go via the JSON inspector
+# (`docker exec -i callscreen bin/rails runner`) or local `bin/rails runner`
+# when E2E_RUNNER=local (CI/localhost); reads go via the JSON inspector
 # endpoint.
 require "minitest/autorun"
 require "json"
@@ -142,7 +143,15 @@ class E2ETest < Minitest::Test
     end
 
     def docker_runner(snippet)
-      raw = `docker exec -i callscreen bin/rails runner #{Shellwords.escape(snippet)} 2>&1`
+      escaped = Shellwords.escape(snippet)
+      raw =
+        if ENV["E2E_RUNNER"] == "local"
+          # Inherit RAILS_ENV from the caller (CI: test). Do not merge stderr:
+          # 04_ntfy_action_test captures stdout as the MessageVerifier token.
+          `bin/rails runner #{escaped}`
+        else
+          `docker exec -i callscreen bin/rails runner #{escaped} 2>&1`
+        end
       raise "docker_runner failed:\n#{raw}" unless $?.success?
       raw
     end

@@ -2,12 +2,12 @@
 
 These are the deploy-side P0 items from the May 2026 multi-view review
 (`docs/research/callscreen-multiview-review-2026-05-29.html`). They touch
-`compose-host` and secrets, so they are performed by the operator, not in the app
+compose host and secrets, so they are performed by the operator, not in the app
 repo. Do them together — several are interdependent.
 
 ## 1. Rotate the synthetic webhook token; remove committed compose defaults (MT-1 / SEC-6 / OPS-4)
 
-`compose.yml` currently ships **real** secret values as `:-`
+`compose.yml` (out of repo) currently ships **real** secret values as `:-`
 defaults, so a missing env var silently goes live with a committed credential:
 
 ```yaml
@@ -21,7 +21,7 @@ The synthetic token bypasses Telnyx Ed25519 verification and (when set) unlocks
 
 Steps:
 1. Generate a fresh token: `openssl rand -hex 32`.
-2. Store it (and a real admin password) in operator secret store, then set in `compose-host/.env`:
+2. Store it (and a real admin password) in the operator secret store, then set in the compose-host `.env`:
    ```
    CALLSCREEN_SYNTHETIC_WEBHOOK_TOKEN=<new token>   # OR leave unset in prod (see step 4)
    CALLSCREEN_ADMIN_PASSWORD=<strong password>
@@ -42,7 +42,7 @@ Steps:
 ## 2. Confine the e2e inspector to the fixture tenant (defense-in-depth, MT-1)
 
 The app now scopes `/e2e/*` reads to a single tenant when `E2E_TENANT_SLUG` is
-set. If you keep the synthetic token enabled anywhere, set in `compose-host/.env`:
+set. If you keep the synthetic token enabled anywhere, set in the compose-host `.env`:
 
 ```
 CALLSCREEN_E2E_TENANT_SLUG=e2e
@@ -54,7 +54,7 @@ block. A leaked token then cannot enumerate other tenants' calls/contacts.
 ## 3. Enable Sentry (OPS-2)
 
 Without `SENTRY_DSN`, all `Sentry.capture_exception` calls are no-ops and the
-operator is blind to screening failures. Set in `compose-host/.env`:
+operator is blind to screening failures. Set in the compose-host `.env`:
 
 ```
 CALLSCREEN_SENTRY_DSN=<dsn from sentry.io>
@@ -97,7 +97,7 @@ it, so a down/loading Whisper silently downgrades screened calls to "unknown".
 (The app side is now hardened — WhisperClient raises TransportError and
 ScreeningJob retries + alerts on terminal failure — but the container should
 still be observable.) Add to the faster-whisper service in
-`compose.yml`:
+`compose.yml` (out of repo):
 
 ```yaml
     healthcheck:

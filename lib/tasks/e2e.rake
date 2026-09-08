@@ -1,5 +1,5 @@
 namespace :e2e do
-  desc "Run live e2e tests against E2E_AGAINST (must be set explicitly)"
+  desc "Run live e2e tests against E2E_AGAINST (must be set explicitly). Set E2E_RUNNER=local for CI/localhost (bin/rails runner instead of docker exec)."
   task :run do
     abort "Set E2E_AGAINST=https://… first" unless ENV["E2E_AGAINST"]
     abort "Set SYNTHETIC_WEBHOOK_TOKEN" unless ENV["SYNTHETIC_WEBHOOK_TOKEN"]

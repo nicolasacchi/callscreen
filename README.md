@@ -1,6 +1,6 @@
 # Callscreen
 
-AI phone call screener that answers forwarded calls via Telnyx TeXML, screens callers with an LLM, transcribes voicemails with Whisper, and pushes notifications via ntfy. Italian-first, but works with any locale.
+AI phone call screener that answers forwarded calls via Telnyx Voice API (Call Control), screens callers with an LLM, transcribes voicemails with Whisper, and pushes notifications via ntfy. Italian-first, but works with any locale.
 
 Stack: Rails 8.1, Ruby 3.4, SQLite, Solid Queue (no Redis/Sidekiq), Devise admin, Thruster, Dockerized.
 
@@ -9,30 +9,28 @@ Stack: Rails 8.1, Ruby 3.4, SQLite, Solid Queue (no Redis/Sidekiq), Devise admin
 ## How it works
 
 ```
-Inbound call → Telnyx → POST /telnyx/voice
+Inbound call → Telnyx Voice API → POST /telnyx/voice
                           ↓
-                  contact lookup + Rule check
+                  tenant + contact + CallPolicy
                           ↓
         ┌─────────────────┼─────────────────┐
         ↓                 ↓                 ↓
-   Reject          Forward (Dial)     Gather speech
-   (blacklist)     (whitelist)              ↓
-                                  POST /telnyx/screen
+   Hangup          Transfer           Screen
+   (blacklist)     (whitelist)        play greeting
                                             ↓
-                                  Rule keyword check
+                                     record speech
                                             ↓
-                                  SpamClassifier (LLM)
+                                  recording.saved
+                                            ↓
+                                  ScreeningJob
+                                Whisper + LLM
                                             ↓
                           ┌─────────────────┼─────────────────┐
                           ↓                 ↓                 ↓
-                       Hangup        Record voicemail   Record voicemail
-                       (spam)        (legit)            (uncertain)
+                       Hangup        Voicemail          Uncertain
+                       (spam)        (legit)            voicemail
                                             ↓
-                                  POST /telnyx/recording
-                                            ↓
-                            TranscribeRecordingJob (Solid Queue)
-                                ↓                 ↓
-                          Whisper API        ntfy push
+                                     ntfy push
 ```
 
 ---
@@ -42,7 +40,7 @@ Inbound call → Telnyx → POST /telnyx/voice
 | Variable | Purpose |
 |---|---|
 | `RAILS_MASTER_KEY` | Decrypts `config/credentials.yml.enc` |
-| `APP_DOMAIN` | Public-facing host (e.g. `https://phone.example.com`); used to build TeXML callback URLs and for `config.hosts` |
+| `APP_DOMAIN` | Public-facing host (e.g. `https://phone.example.com`); used to build greeting/recording URLs and for `config.hosts` |
 | `WEBHOOK_TOKEN` | Legacy webhook auth token. **Optional once Telnyx Ed25519 signing is enabled.** |
 | `TELNYX_PUBLIC_KEY` | Base64-encoded raw 32-byte Ed25519 public key from your Telnyx account. Required for signed-webhook verification. |
 | `TELNYX_API_KEY` | Used to download recordings from `*.telnyx.com` |
@@ -105,18 +103,18 @@ docker run -d -p 80:80 \
   callscreen
 ```
 
-Deployment in this repo is via the traefik compose at `compose.yml` (out of repo). Persistent storage is mounted at `/rails/storage` so SQLite databases and voicemail recordings survive container restarts.
+Deployment is via an out-of-repo compose file. Persistent storage is mounted at `/rails/storage` so SQLite databases and voicemail recordings survive container restarts.
 
 ---
 
 ## Telnyx setup
 
-1. **Create a TeXML application** in the Telnyx portal with this voice URL:
-   `https://<APP_DOMAIN>/telnyx/voice` (POST). Status callback URL: `https://<APP_DOMAIN>/telnyx/status`.
+1. **Create a Call Control (Voice API) application** in the Telnyx portal with this webhook URL:
+   `https://<APP_DOMAIN>/telnyx/voice` (POST).
 2. **Enable webhook signing** on the application. Copy the public key (Base64-encoded raw 32 bytes) and set it as `TELNYX_PUBLIC_KEY`.
 3. **(Optional, during cutover)** Set `WEBHOOK_TOKEN` so the app accepts `?token=...` query-string authentication as a fallback if signing is misconfigured. Set `WEBHOOK_TOKEN_FALLBACK=0` to disable the fallback once signing is verified.
-4. **Provision a phone number** and forward it to the TeXML application.
-5. **Set `FORWARD_NUMBER`** to the number you want whitelisted callers to be Dial'd to (typically your real phone).
+4. **Provision a phone number** and assign it to the Call Control application.
+5. **Set `FORWARD_NUMBER`** to the number you want whitelisted callers transferred to (typically your real phone).
 
 ### Rotating `WEBHOOK_TOKEN`
 
@@ -132,13 +130,13 @@ Update env, restart, then update the Telnyx-side webhook URL in the dashboard (o
 
 The greeting played at the start of every screened call is **selectable from the admin UI** (`/admin/settings`). Two settings drive it:
 
-- `greeting_variant` — one of 10 slugs in `app/models/greeting_catalog.rb` (`informal_tu`, `formal_lei`, `business_meeting`, `brief_lei`, `brief_tu`, `apologetic`, `direct`, `warm`, `email_first`, `bilingual_short`). Default: `informal_tu`. All variants share the same core message ("sono impegnato, ditemi di cosa avete bisogno…") plus the email `operator@example.com` written phonetically for clean TTS.
+- `greeting_variant` — one of 10 slugs in `app/models/greeting_catalog.rb` (`informal_tu`, `formal_lei`, `business_meeting`, `brief_lei`, `brief_tu`, `apologetic`, `direct`, `warm`, `email_first`, `bilingual_short`). Default: `informal_tu`. All variants share the same core message ("sono impegnato, ditemi di cosa avete bisogno…"). Greetings do not include an email address.
 - `greeting_voice` — one of `if_sara`, `im_nicola` (Kokoro Italian voices) or `alice`/`man`/`woman` (Telnyx built-in fallback).
 
 ### Two-tier playback
 
-1. **Pre-rendered Kokoro audio** (preferred). When `storage/greetings/<slug>/<voice>.wav` exists, the app emits TeXML `<Play>` pointing at `https://APP_DOMAIN/greetings/<slug>/<voice>.wav` and Telnyx fetches the file. Studio-quality voices, no per-call cost.
-2. **Telnyx `<Say voice="alice">` fallback**. When the audio file is missing, the app falls back to Telnyx's built-in TTS using the variant's text. The system never hangs even if the operator hasn't pre-rendered yet.
+1. **Pre-rendered Kokoro audio** (preferred). When `storage/greetings/<slug>/<voice>.wav` exists, the app issues a Call Control playback command pointing at `https://APP_DOMAIN/greetings/<slug>/<voice>.wav` and Telnyx fetches the file. Studio-quality voices, no per-call cost.
+2. **Telnyx speak fallback**. When the audio file is missing, the app falls back to Telnyx's built-in TTS using the variant's text. The system never hangs even if the operator hasn't pre-rendered yet.
 
 ### One-time setup: install Kokoro and render audio
 
@@ -216,7 +214,7 @@ bin/rails callscreen:purge_failed_jobs                # clear failed Solid Queue
 - **Rate limits.** Rack::Attack throttles `/telnyx/*` at 60 req/min/IP and `/admin/login` at 10 req/5min by IP and 5 req/20min by email.
 - **Webhook auth.** Ed25519 signatures with 5-minute timestamp drift; legacy `?token=` query string is a cutover fallback gated by `WEBHOOK_TOKEN_FALLBACK`.
 - **PII filter.** `config/initializers/filter_parameter_logging.rb` masks `From`, `To`, `CallSid`, `SpeechResult`, `RecordingUrl`, `phone`, `transcript`, `screening_transcript`, `voicemail_transcript`, `name` in Rails logs; the Sentry initializer applies the same set to event payloads.
-- **TeXML rendering.** All TeXML responses are built with `Nokogiri::XML::Builder`; attribute values from Settings are properly XML-escaped.
+- **Call Control commands.** Playback, record, transfer, and hangup are issued via `CallControlClient` (JSON over HTTPS), not TeXML. Greeting WAVs are served from `/greetings/...` for Telnyx to fetch.
 - **Recordings on disk.** Stored at `Rails.root/storage/recordings/<call_sid>.wav`. The `call_sid` is regex-validated at webhook entry (`/\A[A-Za-z0-9_-]{1,64}\z/`); `RecordingsController` only serves files whose name matches the same pattern, regardless of what's in `recording_local_path`.
 
 ---
@@ -225,15 +223,21 @@ bin/rails callscreen:purge_failed_jobs                # clear failed Solid Queue
 
 ```bash
 bin/rails db:test:prepare
-bin/rails test                                # full suite
+bin/rails test                                # unit suite (does not load e2e/)
 bin/rails test test/services/                 # only service tests
 bin/rails test test/controllers/telnyx_controller_test.rb -n test_rejects_voice_webhook_with_malformed_CallSid
 ```
 
-WebMock disables real network calls. Fixtures live in `test/fixtures/`. Admin users are created in test setup blocks rather than fixtures because Devise password hashing is awkward in YAML.
+`bin/rails test` is the unit suite. It does **not** load `e2e/` (those files `ENV.fetch` at class load and would crash the unit run).
+
+Live production e2e is **operator-only**: set `E2E_AGAINST` and `SYNTHETIC_WEBHOOK_TOKEN`, then `bundle exec rake e2e:run`. Mutation goes through `docker exec` against a deployed container.
+
+CI runs the same e2e files against localhost with `E2E_RUNNER=local` (no Telnyx, Whisper, or Moonshot).
+
+WebMock disables real network calls in the unit suite. Fixtures live in `test/fixtures/`. Admin users are created in test setup blocks rather than fixtures because Devise password hashing is awkward in YAML.
 
 ---
 
 ## License
 
-Private project, no license.
+[MIT](LICENSE). Copyright (c) 2026 nicolasacchi.

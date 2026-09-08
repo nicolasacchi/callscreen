@@ -15,7 +15,7 @@ serves multiple tenants, routed by `dedicated_number` or SIP
 - Telnyx Voice API (Call Control); Ed25519-signed webhooks
 - Kokoro + Chatterbox (multilingual + clone) for TTS
 - faster-whisper (whisper-medium) for transcription, sidecar service
-- Deployed via traefik docker-compose at `compose.yml`
+- Deployed via traefik docker-compose at `compose.yml` (out of repo)
 
 ## Run / test commands
 
@@ -178,10 +178,9 @@ DBs. Don't `rm -rf storage` during dev work without checking.
 
 ## Secrets
 
-Per `~/.claude/CLAUDE.md`: secrets live in the operator secret store "Claude"
-vault, accessed via `~/.claude/hooks/pass-run.sh`. **Never** read
+Secrets live in the operator secret store. **Never** read
 `.env` files directly. Production env vars are loaded from
-`compose-host/.env` into the docker-compose `callscreen` service block.
+the compose-host `.env` into the docker-compose `callscreen` service block.
 
 ## Common gotchas
 

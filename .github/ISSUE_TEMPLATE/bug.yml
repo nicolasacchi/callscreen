@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in screening, webhooks, admin, or notifications is wrong.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a **self-hosted** Rails app (Telnyx Voice API → Whisper → LLM → ntfy).
+        There is no hosted callscreen.dev. Paste logs/repro, not adjectives.
+        **Do not** attach recordings, transcripts, or phone numbers of real callers.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Telnyx webhooks / call flow
+        - Screening (Whisper / classifier)
+        - Greetings / phrases / voice rotation
+        - ntfy actions / notifications
+        - Admin UI / tenants
+        - Deploy / Docker / CI
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or image
+      placeholder: "git SHA or docker image id"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (redact phone numbers / transcripts)
+      render: shell

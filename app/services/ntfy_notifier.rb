@@ -53,7 +53,9 @@ class NtfyNotifier
       actions = build_actions(call)
       headers["Actions"] = actions if actions.present?
 
-      response = HTTParty.post(destination, headers: headers, body: message.to_s, timeout: 10)
+      # follow_redirects: false — HTTParty follows redirects by default, so a
+      # tenant ntfy_url 302 to link-local would be an SSRF path.
+      response = HTTParty.post(destination, headers: headers, body: message.to_s, timeout: 10, follow_redirects: false)
 
       # HTTParty/Net::HTTP do NOT raise on 4xx/5xx — they return a response. A
       # rejecting-but-reachable ntfy server (wrong topic 404, auth 401/403,
@@ -104,7 +106,7 @@ class NtfyNotifier
 
     def build_actions(call)
       return nil unless call && call.id && call.from_number.present?
-      base = ENV.fetch("APP_DOMAIN", "https://phone.example.com")
+      base = ENV.fetch("APP_DOMAIN", "https://example.com")
       tok_w = NtfyActionToken.encode(call_id: call.id, action: "whitelist")
       tok_s = NtfyActionToken.encode(call_id: call.id, action: "mark_spam")
       tok_g = NtfyActionToken.encode(call_id: call.id, action: "report_spam_globally")

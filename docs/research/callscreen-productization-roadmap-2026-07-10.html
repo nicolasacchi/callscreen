@@ -64,7 +64,7 @@ main:focus{outline:none}
 </style>
 <template id="kb-prompt">
 ROLE
-You are implementing the Callscreen productization roadmap in .
+You are implementing the Callscreen productization roadmap in repo root
 (Rails 8.1 / SQLite / Solid Queue / Telnyx Call Control, deployed via compose.yml,
 prod at phone.example.com). Body sections phase-0 .. phase-3 carry rationale; execute in order.
 
@@ -76,7 +76,7 @@ PRECONDITIONS
 STEPS (phase 0 — protect what exists; operator-approval items marked [OP])
 1. [OP] Deploy d7efe77: docker compose -f compose.yml build callscreen && docker compose -f compose.yml up -d callscreen — verify: curl /up → 200, docker exec callscreen bin/rails runner 'puts SolidQueue::Process.count' ≥ 4
 2. [OP] Purge stale recurring backlog: docker exec callscreen bin/rails runner 'SolidQueue::Job.where(queue_name: "solid_queue_recurring", finished_at: nil).find_each(&:destroy); SolidQueue::Job.clear_finished_in_batches' — verify: SolidQueue::ReadyExecution.count == 0 (idle), SolidQueue::Job.count < 100
-3. [OP] Off-box backup: add callscreen to compose-host/backup/dump-all.sh — docker exec callscreen bin/rails db:backup, then rsync/borg storage/backups/ + storage/recordings + storage/greetings + storage/voice_samples off-box — verify: restore latest snapshot to /tmp, sqlite3 "PRAGMA integrity_check" → ok
+3. [OP] Off-box backup: add callscreen to compose host/backup/dump-all.sh — docker exec callscreen bin/rails db:backup, then rsync/borg storage/backups/ + storage/recordings + storage/greetings + storage/voice_samples off-box — verify: restore latest snapshot to /tmp, sqlite3 "PRAGMA integrity_check" → ok
 4. Whisper hardening in compose.yml: pin fedirz/faster-whisper-server image by digest, add healthcheck (curl -f http://localhost:8000/health || /v1/models), callscreen depends_on faster-whisper service_healthy — verify: docker inspect faster_whisper → "healthy"
 5. External uptime probe [OP]: healthchecks.io/UptimeRobot on https://phone.example.com/up every 5 min, alert channel ≠ ntfy — verify: pause container in a window, alert arrives
 6. Daily synthetic-call canary: host cron 07:30 Europe/Rome runs bin/synthetic_call --watch against prod; non-zero exit → ntfy + email — verify: run once manually, call row appears via /e2e/call
@@ -131,12 +131,12 @@ CRM webhooks, daily digest), GDPR/legal notes, metrics.
 
 <section>
 <h2 id="where-it-stands">Where it stands (verified 2026-07-10)</h2>
-<p>Prod at <code>phone.example.com</code> is healthy and in active use: 136 calls total, 10 in the last 7 days, last inbound today 14:02 CEST, 2 tenants. Container built 2026-06-14 matches <code>main</code>. Unit suite 581 tests / 0 failures, brakeman clean, CI enforces an 80/65 coverage floor. Two prod defects were found during this audit and fixed in commit <code>d7efe77</code>:</p>
+<p>Prod at <code>phone.example.com</code> is healthy and in active use. Container built 2026-06-14 matches <code>main</code>. Unit suite 581 tests / 0 failures, brakeman clean, CI enforces an 80/65 coverage floor. Two prod defects were found during this audit and fixed in commit <code>d7efe77</code>:</p>
 <ul>
-<li><strong>Recurring-queue rot.</strong> <code>clear_solid_queue_finished_jobs</code> (the only <code>command:</code>-style task in <code>config/recurring.yml</code>) had no <code>queue:</code> key, so its wrapper jobs landed in <code>solid_queue_recurring</code> — a queue no worker in <code>config/queue.yml</code> consumes. 1,583 jobs accumulated unprocessed since 2026-05-05 and 24,349 finished jobs were never cleared. Fixed by routing to <code>:default</code>; <code>app/jobs/operator_health_watchdog_job.rb</code> now alerts on any ready execution older than 15 min, so a dead consumer surfaces within the hour instead of never.</li>
-<li><strong>Voicemail audio loss on URL expiry.</strong> Telnyx's <code>recording.saved</code> URL is a short-lived pre-signed S3 link; only <code>ScreeningJob</code> downloaded it. Call 184 (2026-07-09 23:40) lost its audio when retries outlasted the link (terminal HTTP 403 at <code>app/services/recording_downloader.rb</code>) — the fallback notification pointed at an unplayable recording. New <code>app/jobs/persist_recording_job.rb</code> captures audio immediately on <code>recording.saved</code> (both branches of <code>handle_recording_saved</code> in <code>app/controllers/telnyx_controller.rb</code>); the downloader now reuses the local copy and writes atomically.</li>
+<li><strong>Recurring-queue rot.</strong> <code>clear_solid_queue_finished_jobs</code> (the only <code>command:</code>-style task in <code>config/recurring.yml</code>) had no <code>queue:</code> key, so its wrapper jobs landed in <code>solid_queue_recurring</code> — a queue no worker in <code>config/queue.yml</code> consumes. A large backlog of unprocessed jobs accumulated, and finished jobs were never cleared. Fixed by routing to <code>:default</code>; <code>app/jobs/operator_health_watchdog_job.rb</code> now alerts on any ready execution older than 15 min, so a dead consumer surfaces within the hour instead of never.</li>
+<li><strong>Voicemail audio loss on URL expiry.</strong> Telnyx's <code>recording.saved</code> URL is a short-lived pre-signed S3 link; only <code>ScreeningJob</code> downloaded it. A production call lost its audio when retries outlasted the link (terminal HTTP 403 at <code>app/services/recording_downloader.rb</code>) — the fallback notification pointed at an unplayable recording. New <code>app/jobs/persist_recording_job.rb</code> captures audio immediately on <code>recording.saved</code> (both branches of <code>handle_recording_saved</code> in <code>app/controllers/telnyx_controller.rb</code>); the downloader now reuses the local copy and writes atomically.</li>
 </ul>
-<div class="callout callout--warn"><span class="callout-label">Operator action pending</span>Deploy of <code>d7efe77</code>, the 1,583-job backlog purge, and a possible Telnyx-API recovery of call 184's recording all need operator approval — the permission gate correctly blocks unattended prod mutation. Exact commands are in the kb-prompt, steps 1–2.</div>
+<div class="callout callout--warn"><span class="callout-label">Operator action pending</span>Deploy of <code>d7efe77</code>, the backlog purge, and a possible Telnyx-API recovery of a lost recording all need operator approval — the permission gate correctly blocks unattended prod mutation. Exact commands are in the kb-prompt, steps 1–2.</div>
 </section>
 
 <section>
@@ -157,7 +157,7 @@ CRM webhooks, daily digest), GDPR/legal notes, metrics.
 <h2 id="phase-0">Phase 0 — protect what exists (this week)</h2>
 <p>One host holds everything; the ops audit's verdict was blunt: the app layer is mature, the host perimeter is not.</p>
 <ul>
-<li><strong>Off-box backup — the single riskiest gap.</strong> <code>db:backup</code> (WAL-safe <code>VACUUM INTO</code>) writes to <code>storage/backups/</code> on the <em>same bind mount</em> as <code>production.sqlite3</code>, and <code>compose-host/backup/dump-all.sh</code> covers other host services but has zero callscreen entries. A disk failure today is total, unrecoverable loss of all tenants, calls, audit history, and voicemail audio. Add callscreen to the borg job; rehearse a restore.</li>
+<li><strong>Off-box backup — the single riskiest gap.</strong> <code>db:backup</code> (WAL-safe <code>VACUUM INTO</code>) writes to <code>storage/backups/</code> on the <em>same bind mount</em> as <code>production.sqlite3</code>, and <code>compose host/backup/dump-all.sh</code> covers other host services but has zero callscreen entries. A disk failure today is total, unrecoverable loss of all tenants, calls, audit history, and voicemail audio. Add callscreen to the borg job; rehearse a restore.</li>
 <li><strong>Whisper sidecar:</strong> unpinned <code>:latest-cpu</code> image, no healthcheck, no <code>depends_on</code>. A silently broken Whisper degrades every screening to "unknown". Pin by digest + healthcheck + startup ordering.</li>
 <li><strong>Proactive detection:</strong> external uptime probe on <code>/up</code> (alert channel independent of ntfy — the watchdog currently self-routes to the same ntfy that could be the failed component) + a daily <code>bin/synthetic_call</code> canary cron. Today, regressions are only caught reactively.</li>
 <li><strong>Python TTS supply chain:</strong> torch/chatterbox/kokoro unpinned, no lockfile, no pip audit in CI. Lock with uv, add the pip ecosystem to Dependabot.</li>

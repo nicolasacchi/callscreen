@@ -5,6 +5,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   scan_ruby:
     runs-on: ubuntu-latest
@@ -93,3 +96,54 @@ jobs:
         env:
           COVERAGE: "1"   # enforces SimpleCov minimum_coverage (test/test_helper.rb)
 
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RAILS_ENV: test
+      CI: "true"
+      SECRET_KEY_BASE: ci-e2e-not-for-production-secret-key-base
+      SYNTHETIC_WEBHOOK_TOKEN: ci-synthetic-webhook-token
+      E2E_AGAINST: http://127.0.0.1:3000
+      E2E_RUNNER: local
+      E2E_TENANT_SLUG: e2e
+      E2E_FULL_CLEANUP: "1"
+      APP_DOMAIN: http://127.0.0.1:3000
+      WEBHOOK_TOKEN: test-webhook-token
+      WEBHOOK_TOKEN_FALLBACK: "0"
+      MOONSHOT_API_KEY: test-moonshot-key
+      MOONSHOT_MODEL: moonshot-v1-8k
+      WHISPER_API_URL: http://faster-whisper.test:8000
+      NTFY_URL: http://ntfy.test/callscreen
+      RAILSDAV_API_URL: ""
+      RAILSDAV_API_TOKEN: ""
+      TELNYX_API_KEY: ""
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Prepare test database
+        run: bin/rails db:test:prepare
+
+      - name: Boot Rails on loopback
+        run: |
+          mkdir -p tmp/pids
+          bin/rails server -e test -p 3000 -b 127.0.0.1 --pid tmp/pids/e2e.pid &
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:3000/up >/dev/null; then
+              echo "server up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server failed to become ready" >&2
+          exit 1
+
+      - name: Run e2e against localhost
+        run: bundle exec rake e2e:run

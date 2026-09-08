@@ -4,14 +4,14 @@
 Each variant carries text in BOTH languages (it/en); the script picks the
 matching text based on the voice's language prefix (i=Italian, a/b=English).
 
-Uses Kokoro TTS directly (the same engine the meditation project at
-upstream TTS project uses). Installation:
+Uses Kokoro TTS directly (the same engine the upstream TTS project uses).
+Installation:
 
     pip install 'kokoro>=0.9.4' soundfile torch
 
-Or, if you already have meditation's venv with the [kokoro] extra:
+Or, if you already have the upstream TTS project's venv with the [kokoro] extra:
 
-    cd ~/project/vibe/meditation && pip install -e '.[kokoro]'
+    pip install -e '.[kokoro]'
 
 Then run from the callscreen project root:
 

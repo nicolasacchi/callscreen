@@ -1,24 +1,24 @@
 require "test_helper"
 
 class SipHeadersParserTest < ActiveSupport::TestCase
-  REAL_PROBE_HEADER = {
+  SAMPLE_HISTORY_INFO_HEADER = {
     "name"  => "History-Info",
     "value" => "<sip:+393990000001@telecomitalia.it;user=phone?Privacy=none>;index=1, " \
                "<sip:+390999000355@telecomitalia.it;user=phone;cause=408>;index=1.1"
   }.freeze
 
-  test "extracts the originally-called number from the real probe-captured header" do
+  test "extracts the originally-called number from the sample History-Info header" do
     assert_equal "+393990000001",
-      SipHeadersParser.original_called_number([ REAL_PROBE_HEADER ])
+      SipHeadersParser.original_called_number([ SAMPLE_HISTORY_INFO_HEADER ])
   end
 
   test "extracts the redirect cause from the LAST entry" do
     assert_equal 408,
-      SipHeadersParser.redirect_cause([ REAL_PROBE_HEADER ])
+      SipHeadersParser.redirect_cause([ SAMPLE_HISTORY_INFO_HEADER ])
   end
 
   test "forwarded? is true when the chain has more than one URI" do
-    assert SipHeadersParser.forwarded?([ REAL_PROBE_HEADER ])
+    assert SipHeadersParser.forwarded?([ SAMPLE_HISTORY_INFO_HEADER ])
   end
 
   test "forwarded? is false on a direct dial (single-URI History-Info)" do

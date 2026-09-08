@@ -1,7 +1,7 @@
 # Parses Telnyx Voice API `sip_headers` array entries from inbound webhooks.
 # Specifically the History-Info header (RFC 7044) which Italian carriers
 # (TIM via Irideos confirmed; others unverified) use to convey the original
-# called number on a forwarded call. Captured example from probe:
+# called number on a forwarded call. Sample History-Info header:
 #
 #   { "name" => "History-Info",
 #     "value" => "<sip:+393990000001@telecomitalia.it;user=phone?Privacy=none>;index=1, " \

@@ -13,7 +13,7 @@ class CallControlClient
   API_BASE = "https://api.telnyx.com/v2"
   DEFAULT_TIMEOUT = 5
 
-  def initialize(api_key: ENV["TELNYX_API_KEY"], app_domain: ENV.fetch("APP_DOMAIN", "https://phone.example.com"))
+  def initialize(api_key: ENV["TELNYX_API_KEY"], app_domain: ENV.fetch("APP_DOMAIN", "https://example.com"))
     @api_key    = api_key.to_s
     @app_domain = app_domain.to_s.chomp("/")
   end
