@@ -131,6 +131,9 @@ jobs:
       - name: Prepare test database
         run: bin/rails db:test:prepare
 
+      - name: Seed shared greeting phrases
+        run: bin/rails db:seed
+
       - name: Boot Rails on loopback
         run: |
           mkdir -p tmp/pids
